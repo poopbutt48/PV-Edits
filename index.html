@@ -2,750 +2,1258 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LOG &amp; RAW Editor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PV Edits</title>
 <style>
 :root {
-  /* Design: Dark professional color grading workspace */
-  --bg-dark: #1a1a1a;
-  --bg-light: #2a2a2a;
-  --bg-lighter: #363636;
-  --fg: #e0e0e0;
-  --fg-dim: #a0a0a0;
-  --accent: #00d4ff;
-  --accent-hover: #00e8ff;
-  --danger: #ff6b35;
-  --success: #4caf50;
-
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: var(--bg-dark);
-  color: var(--fg);
+  color-scheme: dark;
+  --bg: #1a1a1a;
+  --panel: #262626;
+  --panel-2: #2f2f2f;
+  --line: #121212;
+  --edge: #3b3b3b;
+  --text: #a9a9a9;
+  --text-hi: #e9e9e9;
+  --accent: #4e8fd6;
+  --good: #6fae5a;
+  --bad: #c4584c;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg-dark: #f5f5f5;
-    --bg-light: #ffffff;
-    --bg-lighter: #f9f9f9;
-    --fg: #2a2a2a;
-    --fg-dim: #666;
-    --accent: #0099cc;
-    --accent-hover: #0080aa;
-    --danger: #d32f2f;
-    --success: #388e3c;
-    color-scheme: light;
-  }
-}
-
-:root[data-theme="light"] {
-  --bg-dark: #f5f5f5;
-  --bg-light: #ffffff;
-  --bg-lighter: #f9f9f9;
-  --fg: #2a2a2a;
-  --fg-dim: #666;
-  --accent: #0099cc;
-  --accent-hover: #0080aa;
-  --danger: #d32f2f;
-  --success: #388e3c;
-  color-scheme: light;
-}
-
 *, *::before, *::after { box-sizing: border-box; }
-
+html, body { height: 100%; margin: 0; }
 body {
-  margin: 0;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background: var(--bg-dark);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg); color: var(--text);
+  font: 12px/1.35 var(--font);
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  -webkit-text-size-adjust: 100%;
+}
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Top bar */
+.topbar {
+  display: flex; align-items: center; gap: 4px; padding: 6px 10px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  overflow-x: auto; flex: none; scrollbar-width: none;
+}
+.topbar::-webkit-scrollbar { display: none; }
+.brand { color: var(--text-hi); font-weight: 600; letter-spacing: .04em; margin-right: 6px; white-space: nowrap; }
+.brand span { color: var(--accent); }
+.sep { width: 1px; align-self: stretch; background: var(--edge); margin: 2px 4px; flex: none; }
+.btn {
+  background: var(--panel-2); border: 1px solid var(--edge); border-radius: 3px;
+  padding: 5px 10px; white-space: nowrap; color: var(--text-hi); flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.btn:hover { background: #383838; }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.small { padding: 3px 8px; font-size: 11px; }
+.spacer { flex: 1; }
+
+/* Workspace */
+.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr) 310px; }
+.panel { background: var(--panel); overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+.panel.left { border-right: 1px solid var(--line); }
+.panel.right { border-left: 1px solid var(--line); }
+.stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.viewer {
+  flex: 1; min-height: 0; position: relative; background: #101010;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+#view { width: 100%; height: 100%; object-fit: contain; display: block; }
+.empty {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; text-align: center; padding: 20px; color: var(--text);
+}
+.empty h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--text-hi); }
+.empty p { margin: 0; max-width: 34ch; }
+.badge {
+  position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,.6); color: var(--text-hi);
+  padding: 2px 8px; border-radius: 3px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+}
+.dropping::after {
+  content: "Drop files to import"; position: absolute; inset: 8px; border: 2px dashed var(--accent);
+  display: flex; align-items: center; justify-content: center; color: var(--text-hi); background: rgba(20,20,20,.7);
+  font-size: 15px; pointer-events: none;
 }
 
-.editor-container {
-  display: flex;
-  gap: 16px;
-  flex: 1;
-  min-height: 0;
+.transport {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel);
+  border-top: 1px solid var(--line); flex: none;
 }
+.transport input[type=range] { flex: 1; min-width: 0; }
+.time { font-family: var(--mono); font-size: 11px; min-width: 9.5ch; text-align: right; color: var(--text-hi); }
 
-.panel {
-  background: var(--bg-light);
-  border-radius: 8px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.filmstrip {
+  display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; flex: none; height: 98px;
+  background: var(--panel); border-top: 1px solid var(--line);
 }
-
-.left-panel {
-  width: 200px;
-  flex-shrink: 0;
+.film {
+  flex: none; width: 104px; display: flex; flex-direction: column; gap: 2px; padding: 2px; border: 1px solid transparent;
+  background: transparent; text-align: left; border-radius: 2px;
 }
+.film canvas { width: 100%; height: 66px; display: block; background: #111; }
+.film.active { border-color: var(--accent); background: #333; }
+.film .meta { display: flex; justify-content: space-between; font-size: 10px; color: var(--text); height: 12px; overflow: hidden; }
+.film .stars { color: #d8b255; letter-spacing: 1px; }
+.film .flag-p { color: var(--good); font-weight: 700; }
+.film .flag-x { color: var(--bad); font-weight: 700; }
 
-.center-panel {
-  flex: 1;
-  min-width: 0;
+/* Panels */
+.sec { border-bottom: 1px solid var(--line); }
+.sec > header {
+  display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; user-select: none;
+  color: var(--text-hi); font-weight: 600; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  background: var(--panel-2); width: 100%; border: 0; text-align: left;
 }
-
-.right-panel {
-  width: 280px;
-  flex-shrink: 0;
-  overflow-y: auto;
+.sec > header::before {
+  content: ""; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-top: 5px solid var(--text); transition: transform .12s;
 }
+.sec.closed > header::before { transform: rotate(-90deg); }
+.sec.closed > .body { display: none; }
+.sec > header .hint { margin-left: auto; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text); }
+.body { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
 
-.panel h2 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--accent);
-  font-weight: 600;
+.row { display: flex; flex-direction: column; gap: 3px; padding: 2px 0; }
+.row .lab { display: flex; justify-content: space-between; gap: 8px; }
+.row .lab span:first-child { cursor: default; }
+.row .val { font-family: var(--mono); font-size: 11px; color: var(--text-hi); min-width: 5ch; text-align: right; }
+
+input[type=range] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 20px; background: transparent; margin: 0; touch-action: pan-y;
 }
-
-.panel h3 {
-  margin: 16px 0 8px 0;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--fg-dim);
-  font-weight: 500;
+input[type=range]::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: var(--track, #5a5a5a); }
+input[type=range]::-moz-range-track { height: 3px; border-radius: 2px; background: var(--track, #5a5a5a); }
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: #d0d0d0; border: 1px solid #111; margin-top: -5px;
 }
+input[type=range]::-moz-range-thumb { width: 11px; height: 11px; border-radius: 50%; background: #d0d0d0; border: 1px solid #111; }
+input[type=range]:hover::-webkit-slider-thumb { background: #fff; }
 
-/* File Upload */
-.upload-zone {
-  border: 2px dashed var(--accent);
-  border-radius: 6px;
-  padding: 16px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.3s;
-  margin-bottom: 12px;
+select, .field {
+  width: 100%; background: #1d1d1d; border: 1px solid var(--edge); border-radius: 3px; padding: 5px 6px; color: var(--text-hi);
 }
+.note { font-size: 11px; color: #858585; }
 
-.upload-zone:hover {
-  background: var(--bg-lighter);
-  border-color: var(--accent-hover);
+.histo-wrap { padding: 10px 12px 6px; background: var(--panel); border-bottom: 1px solid var(--line); }
+#histo { width: 100%; height: 86px; display: block; background: #1b1b1b; border: 1px solid var(--line); }
+.histo-meta { display: flex; justify-content: space-between; margin-top: 5px; font-size: 11px; gap: 8px; }
+.histo-meta .file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-hi); min-width: 0; }
+.histo-meta .dims { color: var(--text); white-space: nowrap; }
+
+.tabs { display: flex; gap: 2px; }
+.tabs button { flex: 1; padding: 4px 0; background: #1d1d1d; border: 1px solid var(--edge); border-radius: 3px; font-size: 11px; }
+.tabs button.on { background: #444; color: #fff; }
+.hsl-grid { display: flex; flex-direction: column; gap: 4px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+
+.curve-wrap { position: relative; }
+#curve { width: 100%; aspect-ratio: 1; display: block; background: #1b1b1b; border: 1px solid var(--line); touch-action: none; cursor: crosshair; }
+
+.preset-group h4 { margin: 0; padding: 7px 12px 4px; font-size: 11px; letter-spacing: .06em; color: var(--text-hi); font-weight: 600; }
+.preset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 4px 12px 10px; }
+.preset { background: transparent; border: 1px solid transparent; padding: 2px; text-align: left; border-radius: 2px; position: relative; }
+.preset:hover { background: #333; }
+.preset canvas { width: 100%; aspect-ratio: 112 / 76; display: block; background: #111; }
+.preset span { display: block; padding-top: 2px; font-size: 11px; color: var(--text-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preset .del {
+  position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; border: 0;
+  background: rgba(0,0,0,.65); color: #fff; line-height: 1; padding: 0; display: none;
 }
+.preset:hover .del, .preset:focus-within .del { display: block; }
+.save-preset { display: flex; gap: 6px; padding: 8px 12px; }
+.save-preset .field { flex: 1; min-width: 0; }
 
-.upload-zone.dragover {
-  background: var(--bg-lighter);
-  border-color: var(--accent-hover);
+.history { list-style: none; margin: 0; padding: 4px 0 8px; }
+.history li { padding: 4px 12px; cursor: pointer; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history li:hover { background: #333; }
+.history li.cur { background: #3d3d3d; color: var(--text-hi); }
+.history li.future { opacity: .45; }
+
+.pop {
+  position: fixed; z-index: 20; right: 10px; top: 46px; width: min(300px, calc(100vw - 20px));
+  background: var(--panel-2); border: 1px solid var(--edge); border-radius: 4px; padding: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 10px;
 }
-
-.upload-zone {
-  display: block;
-  -webkit-tap-highlight-color: transparent;
+.toast {
+  position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom, 0));
+  background: #111; color: var(--text-hi); border: 1px solid var(--edge); padding: 8px 14px; border-radius: 4px;
+  max-width: calc(100vw - 24px); box-shadow: 0 6px 18px rgba(0,0,0,.5);
 }
+.hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
 
-.file-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
+.tabbar { display: none; }
 
-@media (max-width: 1024px) {
-  body { height: auto; min-height: 100%; }
-  .panel, .right-panel { overflow: visible; }
-  .preview-container { min-height: 260px; }
-  .media-list { max-height: 160px; }
-}
-
-.upload-zone-text {
-  font-size: 12px;
-  color: var(--fg-dim);
-  line-height: 1.5;
-}
-
-/* Media List */
-.media-list {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.media-item {
-  background: var(--bg-lighter);
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 10px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 12px;
-  word-break: break-word;
-}
-
-.media-item:hover {
-  background: var(--bg-dark);
-  border-color: var(--accent);
-}
-
-.media-item.active {
-  background: var(--bg-dark);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.media-type {
-  font-size: 10px;
-  color: var(--fg-dim);
-  margin-top: 4px;
-}
-
-/* Preview Area */
-.preview-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #000;
-  border-radius: 8px;
-  overflow: hidden;
-  flex: 1;
-  min-height: 0;
-  position: relative;
-}
-
-.preview-placeholder {
-  color: var(--fg-dim);
-  text-align: center;
-  font-size: 14px;
-}
-
-video, canvas {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-}
-
-/* Controls */
-.control-group {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.control-label {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  margin-bottom: 6px;
-}
-
-.control-label span:first-child {
-  color: var(--fg);
-  font-weight: 500;
-}
-
-.control-value {
-  color: var(--accent);
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 11px;
-}
-
-input[type="range"] {
-  width: 100%;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--bg-lighter);
-  outline: none;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--accent);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-input[type="range"]::-webkit-slider-thumb:hover {
-  background: var(--accent-hover);
-  box-shadow: 0 0 8px rgba(0, 212, 255, 0.3);
-}
-
-input[type="range"]::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--accent);
-  cursor: pointer;
-  border: none;
-  transition: all 0.2s;
-}
-
-input[type="range"]::-moz-range-thumb:hover {
-  background: var(--accent-hover);
-  box-shadow: 0 0 8px rgba(0, 212, 255, 0.3);
-}
-
-.button-group {
-  display: flex;
-  gap: 8px;
-}
-
-button {
-  flex: 1;
-  padding: 8px 12px;
-  font-size: 12px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s;
-  background: var(--accent);
-  color: var(--bg-dark);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-button:hover {
-  background: var(--accent-hover);
-}
-
-button.secondary {
-  background: var(--bg-lighter);
-  color: var(--fg);
-  border: 1px solid var(--fg-dim);
-}
-
-button.secondary:hover {
-  background: var(--bg-dark);
-}
-
-button.danger {
-  background: var(--danger);
-  color: white;
-}
-
-button.danger:hover {
-  opacity: 0.9;
-}
-
-/* Responsive */
-@media (max-width: 1024px) {
-  .editor-container {
-    flex-direction: column;
+@media (max-width: 860px) {
+  .workspace { display: flex; flex-direction: column; }
+  .stage { order: 0; flex: 1 1 auto; }
+  .panel { order: 1; flex: 0 0 42%; border: 0; border-top: 1px solid var(--line); }
+  body[data-tab="edit"] .panel.left, body[data-tab="presets"] .panel.right { display: none; }
+  .tabbar { display: flex; flex: none; background: var(--panel); border-top: 1px solid var(--line); }
+  .tabbar button {
+    flex: 1; padding: 11px 0; background: transparent; border: 0; border-bottom: 2px solid transparent;
+    font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
   }
-
-  .left-panel, .right-panel {
-    width: 100%;
-  }
-}
-
-/* Header */
-.header {
-  margin-bottom: 16px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header h1 {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-}
-
-.info-text {
-  font-size: 11px;
-  color: var(--fg-dim);
-  margin-top: 4px;
+  .tabbar button.on { color: var(--text-hi); border-bottom-color: var(--accent); }
+  .filmstrip { height: 80px; }
+  .film { width: 80px; }
+  .film canvas { height: 50px; }
+  .preset-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  input[type=range] { height: 28px; }
+  .btn { padding: 7px 11px; }
+  .viewer { min-height: 160px; }
+  .histo-wrap { padding-top: 6px; }
+  #histo { height: 60px; }
 }
 </style>
-
 </head>
-<body>
-<div class="header">
-  <div>
-    <h1>LOG & RAW Editor</h1>
-    <div class="info-text">Upload LOG videos and DNG photos for color grading</div>
-  </div>
-</div>
+<body data-tab="edit">
 
-<div class="editor-container">
-  <!-- Left Panel: File Management -->
-  <div class="panel left-panel">
-    <h2>Media</h2>
+<header class="topbar">
+  <div class="brand">PV <span>Edits</span></div>
+  <label class="btn primary" for="fileInput" id="importLabel">Import</label>
+  <input class="hidden-input" type="file" id="fileInput" multiple>
+  <span class="sep"></span>
+  <button class="btn" id="undoBtn" disabled>Undo</button>
+  <button class="btn" id="redoBtn" disabled>Redo</button>
+  <span class="sep"></span>
+  <button class="btn" id="copyBtn">Copy</button>
+  <button class="btn" id="pasteBtn">Paste</button>
+  <button class="btn" id="resetBtn">Reset</button>
+  <span class="sep"></span>
+  <button class="btn" id="beforeBtn" title="Show original (\)">Before / After</button>
+  <span class="spacer"></span>
+  <button class="btn primary" id="exportBtn">Export</button>
+</header>
 
-    <label class="upload-zone" id="uploadZone" for="fileInput">
-      <span class="upload-zone-text">
-        <strong>Tap to choose files</strong><br>
-        LOG video or DNG photo
-      </span>
-    </label>
-    <input type="file" id="fileInput" class="file-input" multiple>
-    <button id="pickBtn" class="secondary" type="button" style="width:100%;margin-bottom:8px;">Choose files</button>
-    <div class="info-text" id="uploadStatus" role="status">Waiting for a file.</div>
-
-
-    <div class="media-list" id="mediaList"></div>
-  </div>
-
-  <!-- Center Panel: Preview -->
-  <div class="panel center-panel">
-    <div class="preview-container" id="previewContainer">
-      <div class="preview-placeholder">Upload a LOG video or DNG photo to begin</div>
-    </div>
-  </div>
-
-  <!-- Right Panel: Color Controls -->
-  <div class="panel right-panel">
-    <h2>Color Grading</h2>
-
-    <!-- Exposure & Levels -->
-    <h3>Exposure</h3>
-    <div class="control-group">
-      <div class="control-label">
-        <span>Exposure</span>
-        <span class="control-value" id="exposureValue">0</span>
+<div class="workspace">
+  <aside class="panel left" id="leftPanel">
+    <section class="sec" id="secPresets">
+      <header>Presets</header>
+      <div class="body" style="padding:0">
+        <div id="presetList"></div>
+        <div class="save-preset">
+          <input class="field" id="presetName" placeholder="Name this look" maxlength="40" aria-label="Preset name">
+          <button class="btn small" id="savePreset">Save</button>
+        </div>
       </div>
-      <input type="range" id="exposure" min="-100" max="100" value="0">
-    </div>
+    </section>
+    <section class="sec" id="secHistory">
+      <header>History</header>
+      <div class="body" style="padding:0"><ul class="history" id="historyList"></ul></div>
+    </section>
+  </aside>
 
-    <div class="control-label">
-      <span>Contrast</span>
-      <span class="control-value" id="contrastValue">0</span>
+  <main class="stage">
+    <div class="viewer" id="viewer">
+      <canvas id="view"></canvas>
+      <div class="badge" id="beforeBadge" hidden>Before</div>
+      <div class="empty" id="empty">
+        <h2>Import LOG video, DNG or photos</h2>
+        <p>Drop files here or choose them. Pick a .cube file to load a camera LUT.</p>
+        <label class="btn primary" for="fileInput">Choose files</label>
+      </div>
     </div>
-    <div class="control-group">
-      <input type="range" id="contrast" min="-100" max="100" value="0">
+    <div class="transport" id="transport" hidden>
+      <button class="btn small" id="playBtn" style="min-width:56px">Play</button>
+      <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Seek">
+      <span class="time" id="timeLabel">0:00 / 0:00</span>
+      <button class="btn small" id="muteBtn">Muted</button>
+      <button class="btn small on" id="loopBtn">Loop</button>
     </div>
+    <div class="filmstrip" id="filmstrip"></div>
+  </main>
 
-    <!-- Color -->
-    <h3>Color</h3>
-    <div class="control-label">
-      <span>Saturation</span>
-      <span class="control-value" id="saturationValue">0</span>
+  <aside class="panel right" id="rightPanel">
+    <div class="histo-wrap">
+      <canvas id="histo" width="256" height="86"></canvas>
+      <div class="histo-meta"><span class="file" id="infoFile">No file</span><span class="dims" id="infoDims"></span></div>
     </div>
-    <div class="control-group">
-      <input type="range" id="saturation" min="-100" max="100" value="0">
-    </div>
+    <div id="editor"></div>
+  </aside>
+</div>
 
-    <div class="control-label">
-      <span>Temperature</span>
-      <span class="control-value" id="temperatureValue">0</span>
-    </div>
-    <div class="control-group">
-      <input type="range" id="temperature" min="-50" max="50" value="0">
-    </div>
+<nav class="tabbar" aria-label="Panels">
+  <button data-tab="edit" class="on">Edit</button>
+  <button data-tab="presets">Presets</button>
+</nav>
 
-    <div class="control-label">
-      <span>Tint</span>
-      <span class="control-value" id="tintValue">0</span>
-    </div>
-    <div class="control-group">
-      <input type="range" id="tint" min="-50" max="50" value="0">
-    </div>
-
-    <!-- Tone Curves -->
-    <h3>Tone</h3>
-    <div class="control-label">
-      <span>Highlights</span>
-      <span class="control-value" id="highlightsValue">0</span>
-    </div>
-    <div class="control-group">
-      <input type="range" id="highlights" min="-100" max="100" value="0">
-    </div>
-
-    <div class="control-label">
-      <span>Shadows</span>
-      <span class="control-value" id="shadowsValue">0</span>
-    </div>
-    <div class="control-group">
-      <input type="range" id="shadows" min="-100" max="100" value="0">
-    </div>
-
-    <!-- Actions -->
-    <div class="button-group" style="margin-top: 24px;">
-      <button id="resetBtn" class="secondary">Reset</button>
-      <button id="downloadBtn">Export</button>
-    </div>
+<div class="pop" id="exportPop" hidden>
+  <div class="row"><div class="lab"><span>Format</span></div><select id="expFormat"></select></div>
+  <div class="row" id="expQualRow"><div class="lab"><span>Quality</span><span class="val" id="expQualVal">92</span></div>
+    <input type="range" id="expQual" min="50" max="100" value="92"></div>
+  <p class="note" id="expNote" style="margin:0"></p>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button class="btn" id="expCancel">Close</button>
+    <button class="btn primary" id="expGo">Export</button>
   </div>
 </div>
+<div class="toast" id="toast" hidden></div>
+<input class="hidden-input" type="file" id="lutInput">
 
 <script>
-const state = {
-  currentMedia: null,
-  mediaFiles: [],
-  adjustments: {
-    exposure: 0,
-    contrast: 0,
-    saturation: 0,
-    temperature: 0,
-    tint: 0,
-    highlights: 0,
-    shadows: 0
+'use strict';
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  if (props) for (const k in props) {
+    if (k === 'class') e.className = props[k];
+    else if (k === 'text') e.textContent = props[k];
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), props[k]);
+    else e.setAttribute(k, props[k]);
   }
+  kids.flat().forEach(c => c != null && e.append(c));
+  return e;
+}
+let toastTimer;
+function toast(msg, ms = 4500) {
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, ms);
+}
+const fmtTime = (s) => { s = Math.max(0, s || 0); return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0'); };
+
+/* ---------- settings model ---------- */
+const DEFAULTS = {
+  profile: 'none', bw: false,
+  temp: 0, tint: 0, exposure: 0, contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
+  clarity: 0, vibrance: 0, saturation: 0,
+  curve: [[0, 0], [1, 1]],
+  shH: 215, shS: 0, miH: 40, miS: 0, hiH: 45, hiS: 0,
+  sharpen: 0, vig: 0, vigMid: 50, grain: 0, lutAmt: 0
 };
+const BANDS = [
+  ['Red', '#e0453a', 0], ['Orange', '#e8872e', 30], ['Yellow', '#e3cf3a', 60], ['Green', '#58b94c', 120],
+  ['Aqua', '#3ec6c6', 180], ['Blue', '#4a7fe0', 240], ['Purple', '#9560d8', 270], ['Magenta', '#d54ba6', 300]
+];
+BANDS.forEach((_, i) => { DEFAULTS['h' + i] = 0; DEFAULTS['s' + i] = 0; DEFAULTS['l' + i] = 0; });
+const ORIGINAL = Object.assign(clone(DEFAULTS), { profile: 'none' });
+const PROFILES = [
+  ['none', 'Standard (sRGB / Rec.709)'], ['slog3', 'Sony S-Log3'], ['vlog', 'Panasonic V-Log'],
+  ['logc3', 'ARRI LogC3 (EI 800)'], ['flat', 'Flat / other LOG (generic)']
+];
+const PROFILE_ID = { none: 0, slog3: 1, vlog: 2, logc3: 3, flat: 4 };
 
-const uploadZone = document.getElementById('uploadZone');
-const fileInput = document.getElementById('fileInput');
-const mediaList = document.getElementById('mediaList');
-const previewContainer = document.getElementById('previewContainer');
-const resetBtn = document.getElementById('resetBtn');
-const downloadBtn = document.getElementById('downloadBtn');
+const FADE = [[0, 0.06], [1, 0.96]];
+const SCURVE = [[0, 0], [0.25, 0.2], [0.75, 0.8], [1, 1]];
+const PRESET_GROUPS = [
+  ['LOG to Rec.709', [
+    ['S-Log3 base', { profile: 'slog3', contrast: 15, saturation: 12 }],
+    ['V-Log base', { profile: 'vlog', contrast: 15, saturation: 12 }],
+    ['LogC3 base', { profile: 'logc3', contrast: 12, saturation: 8 }],
+    ['Flat LOG base', { profile: 'flat', saturation: 15 }]
+  ]],
+  ['Cinematic', [
+    ['Teal & Orange', { contrast: 20, vibrance: 15, saturation: -5, shH: 195, shS: 38, hiH: 35, hiS: 32, curve: SCURVE }],
+    ['Bleach Bypass', { contrast: 35, saturation: -45, clarity: 25, blacks: -10, grain: 10 }],
+    ['Moody Blue', { exposure: -0.2, contrast: 15, temp: -15, saturation: -10, shH: 215, shS: 30, vig: -25 }],
+    ['Golden Hour', { exposure: 0.1, temp: 35, tint: 5, highlights: -20, vibrance: 20, hiH: 40, hiS: 30, vig: -15 }],
+    ['Neon Night', { contrast: 25, vibrance: 30, shH: 270, shS: 32, hiH: 180, hiS: 22, blacks: -8 }],
+    ['Desert Dust', { temp: 22, contrast: 10, saturation: -12, h1: -8, s1: -10, shH: 30, shS: 15, curve: FADE }]
+  ]],
+  ['Film', [
+    ['Warm Print', { temp: 12, contrast: 12, blacks: 15, shadows: 10, highlights: -10, saturation: -5, miH: 40, miS: 10, grain: 18, curve: FADE }],
+    ['Cool Slide', { temp: -10, tint: -6, contrast: 8, h3: -15, s3: 10, blacks: 10, grain: 15 }],
+    ['Faded Matte', { contrast: -15, blacks: 35, whites: -10, saturation: -15, curve: [[0, 0.1], [1, 0.95]] }],
+    ['Cross Process', { contrast: 22, tint: 8, shH: 160, shS: 28, hiH: 55, hiS: 34, saturation: 8 }]
+  ]],
+  ['Black & White', [
+    ['B&W Natural', { bw: true, contrast: 10 }],
+    ['B&W High Contrast', { bw: true, contrast: 45, blacks: -20, whites: 15, clarity: 20 }],
+    ['B&W Film Grain', { bw: true, contrast: 20, grain: 35, vig: -20, blacks: 10 }],
+    ['B&W Low Key', { bw: true, exposure: -0.4, contrast: 30, shadows: -20, vig: -35 }]
+  ]],
+  ['Portrait & Landscape', [
+    ['Soft Portrait', { exposure: 0.2, contrast: -10, highlights: -15, shadows: 15, clarity: -15, vibrance: 10, s0: -10, l1: 15 }],
+    ['Vivid Landscape', { contrast: 20, clarity: 25, vibrance: 35, saturation: 10, highlights: -25, shadows: 20, s3: 15, s5: 15 }],
+    ['Clean Bright', { exposure: 0.3, whites: 15, highlights: -10, shadows: 25, vibrance: 15 }]
+  ]]
+];
 
-// File upload handlers
-uploadZone.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  uploadZone.classList.add('dragover');
-});
+/* ---------- tone curve math ---------- */
+function curveFn(pts) {
+  const p = pts.slice().sort((a, b) => a[0] - b[0]);
+  const n = p.length, xs = p.map(a => a[0]), ys = p.map(a => a[1]);
+  const d = [], m = [];
+  for (let i = 0; i < n - 1; i++) d[i] = (ys[i + 1] - ys[i]) / ((xs[i + 1] - xs[i]) || 1e-6);
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { const t = 3 / Math.sqrt(s); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  return (x) => {
+    if (x <= xs[0]) return clamp(ys[0], 0, 1);
+    if (x >= xs[n - 1]) return clamp(ys[n - 1], 0, 1);
+    let i = 0; while (x > xs[i + 1]) i++;
+    const h = xs[i + 1] - xs[i], t = (x - xs[i]) / h, t2 = t * t, t3 = t2 * t;
+    return clamp((2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * h * m[i] + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * h * m[i + 1], 0, 1);
+  };
+}
+const curveIsIdentity = (c) => c.length === 2 && c[0][0] === 0 && c[0][1] === 0 && c[1][0] === 1 && c[1][1] === 1;
+function hsvToRgb(h, s, v) {
+  const f = (n) => { const k = (n + h * 6) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return [f(5), f(3), f(1)];
+}
 
-uploadZone.addEventListener('dragleave', () => {
-  uploadZone.classList.remove('dragover');
-});
+/* ---------- WebGL renderer ---------- */
+const VERT = `
+attribute vec2 p; varying vec2 vUv; varying vec2 vPos;
+uniform vec2 uUvScale; uniform vec2 uUvOffset;
+void main(){ vUv = (p*0.5+0.5)*uUvScale + uUvOffset; vPos = p; gl_Position = vec4(p,0.,1.); }`;
+const FRAG = `
+precision highp float;
+varying vec2 vUv; varying vec2 vPos;
+uniform sampler2D uTex; uniform sampler2D uCurve; uniform sampler2D uLut;
+uniform vec2 uTexel; uniform float uDetailScale; uniform vec2 uAspect;
+uniform int uProfile; uniform int uBW; uniform int uUseCurve; uniform int uUseHsl; uniform int uUseLut;
+uniform float uLutSize; uniform float uLutAmt;
+uniform float uTemp, uTint, uExposure, uContrast, uHighlights, uShadows, uWhites, uBlacks;
+uniform float uClarity, uSharpen, uVibrance, uSaturation;
+uniform float uHslH[8]; uniform float uHslS[8]; uniform float uHslL[8];
+uniform vec4 uGrSh; uniform vec4 uGrMi; uniform vec4 uGrHi;
+uniform float uVig, uVigMid, uGrain, uSeed;
+const vec3 LW = vec3(0.2126, 0.7152, 0.0722);
+float luma(vec3 c){ return dot(c, LW); }
+vec3 s2l(vec3 c){ return mix(c/12.92, pow((c+0.055)/1.055, vec3(2.4)), step(0.04045, c)); }
+vec3 l2s(vec3 c){ c = max(c, 0.0); return mix(c*12.92, 1.055*pow(c, vec3(1.0/2.4))-0.055, step(0.0031308, c)); }
+float slog3(float x){ return x >= 171.2102946929/1023.0 ? pow(10.0,(x*1023.0-420.0)/261.5)*0.19-0.01 : (x*1023.0-95.0)*0.01125/(171.2102946929-95.0); }
+float vlog(float x){ return x < 0.181 ? (x-0.125)/5.6 : pow(10.0,(x-0.598206)/0.241514)-0.00873; }
+float logc3(float x){ return x > 0.149658 ? (pow(10.0,(x-0.385537)/0.24719)-0.052272)/5.555556 : (x-0.092809)/5.367655; }
+vec3 logToLin(vec3 c, int p){
+  if(p==1) return vec3(slog3(c.r), slog3(c.g), slog3(c.b));
+  if(p==2) return vec3(vlog(c.r), vlog(c.g), vlog(c.b));
+  return vec3(logc3(c.r), logc3(c.g), logc3(c.b));
+}
+vec3 flatLog(vec3 c){ c = clamp((c-0.07)/0.86, 0.0, 1.0); return mix(c, c*c*(3.0-2.0*c), 0.8); }
+vec3 rgb2hsv(vec3 c){
+  vec4 K = vec4(0.0,-1.0/3.0,2.0/3.0,-1.0);
+  vec4 p = mix(vec4(c.bg,K.wz), vec4(c.gb,K.xy), step(c.b,c.g));
+  vec4 q = mix(vec4(p.xyw,c.r), vec4(c.r,p.yzx), step(p.x,c.r));
+  float d = q.x - min(q.w,q.y); float e = 1.0e-10;
+  return vec3(abs(q.z + (q.w-q.y)/(6.0*d+e)), d/(q.x+e), q.x);
+}
+vec3 hsv2rgb(vec3 c){
+  vec4 K = vec4(1.0,2.0/3.0,1.0/3.0,3.0);
+  vec3 p = abs(fract(c.xxx+K.xyz)*6.0-K.www);
+  return c.z*mix(K.xxx, clamp(p-K.xxx,0.0,1.0), c.y);
+}
+float bandCenter(int i){
+  if(i==0) return 0.0; if(i==1) return 30.0/360.0; if(i==2) return 60.0/360.0; if(i==3) return 120.0/360.0;
+  if(i==4) return 180.0/360.0; if(i==5) return 240.0/360.0; if(i==6) return 270.0/360.0; return 300.0/360.0;
+}
+vec3 lutSample(vec3 c){
+  float N = uLutSize; c = clamp(c,0.0,1.0)*(N-1.0);
+  float b0 = floor(c.b); float b1 = min(b0+1.0, N-1.0); float fb = c.b-b0;
+  vec2 uv0 = vec2((b0*N + c.r + 0.5)/(N*N), (c.g+0.5)/N);
+  vec2 uv1 = vec2((b1*N + c.r + 0.5)/(N*N), (c.g+0.5)/N);
+  return mix(texture2D(uLut,uv0).rgb, texture2D(uLut,uv1).rgb, fb);
+}
+float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
+void main(){
+  vec3 src = texture2D(uTex, vUv).rgb;
+  vec3 enc = src;
+  if(uUseLut==1) enc = mix(src, lutSample(src), uLutAmt);
+  float detS = 0.0; float detC = 0.0;
+  if(uSharpen > 0.0 || uClarity != 0.0){
+    float l0 = luma(src); float gain = uProfile==0 ? 1.0 : 2.5;
+    vec2 t1 = uTexel*uDetailScale*1.2;
+    float b1 = (luma(texture2D(uTex,vUv+vec2(t1.x,0.)).rgb)+luma(texture2D(uTex,vUv-vec2(t1.x,0.)).rgb)
+              +luma(texture2D(uTex,vUv+vec2(0.,t1.y)).rgb)+luma(texture2D(uTex,vUv-vec2(0.,t1.y)).rgb))*0.25;
+    detS = (l0-b1)*gain;
+    if(uClarity != 0.0){
+      vec2 t2 = uTexel*uDetailScale*9.0; vec2 d = t2*0.7071;
+      float b2 = (luma(texture2D(uTex,vUv+vec2(t2.x,0.)).rgb)+luma(texture2D(uTex,vUv-vec2(t2.x,0.)).rgb)
+                +luma(texture2D(uTex,vUv+vec2(0.,t2.y)).rgb)+luma(texture2D(uTex,vUv-vec2(0.,t2.y)).rgb)
+                +luma(texture2D(uTex,vUv+d).rgb)+luma(texture2D(uTex,vUv-d).rgb)
+                +luma(texture2D(uTex,vUv+vec2(d.x,-d.y)).rgb)+luma(texture2D(uTex,vUv+vec2(-d.x,d.y)).rgb))*0.125;
+      detC = (l0-b2)*gain;
+    }
+  }
+  vec3 lin;
+  if(uProfile==0) lin = s2l(enc);
+  else if(uProfile==4) lin = s2l(flatLog(enc));
+  else {
+    lin = max(logToLin(enc, uProfile), 0.0);
+    vec3 k = max(lin-0.6, 0.0);
+    lin = min(lin, vec3(0.6)) + 0.4*(1.0-exp(-k/0.4));
+  }
+  lin.r *= 1.0 + uTemp*0.003; lin.b *= 1.0 - uTemp*0.003; lin.g *= 1.0 - uTint*0.003;
+  lin *= exp2(uExposure);
+  vec3 c = clamp(l2s(lin), 0.0, 1.0);
+  float lo = -uBlacks/100.0*0.15; float hi = 1.0 - uWhites/100.0*0.2;
+  c = clamp((c-lo)/(hi-lo), 0.0, 1.0);
+  float k = uContrast/100.0;
+  if(k >= 0.0) c = mix(c, c*c*(3.0-2.0*c), k); else c = mix(c, 0.5+(c-0.5)*0.4, -k);
+  float l = luma(c);
+  float hw = smoothstep(0.5, 1.0, l); float sw = 1.0 - smoothstep(0.0, 0.5, l);
+  c *= (1.0 + uShadows/100.0*0.8*sw) * (1.0 + uHighlights/100.0*0.4*hw);
+  c = clamp(c, 0.0, 1.0);
+  c += detS*(uSharpen/100.0)*1.5;
+  l = luma(c);
+  c += detC*(uClarity/100.0)*1.2*4.0*l*(1.0-l);
+  c = clamp(c, 0.0, 1.0);
+  l = luma(c);
+  float sat0 = max(c.r,max(c.g,c.b)) - min(c.r,min(c.g,c.b));
+  c = mix(vec3(l), c, 1.0 + uVibrance/100.0*(1.0-sat0));
+  l = luma(c);
+  c = clamp(mix(vec3(l), c, 1.0 + uSaturation/100.0), 0.0, 1.0);
+  if(uUseHsl==1){
+    vec3 hsv = rgb2hsv(c); float dh=0.0, ds=0.0, dl=0.0;
+    for(int i=0;i<8;i++){
+      float d = abs(hsv.x - bandCenter(i)); d = min(d, 1.0-d);
+      float w = max(0.0, 1.0 - d/0.125);
+      dh += w*uHslH[i]; ds += w*uHslS[i]; dl += w*uHslL[i];
+    }
+    float gate = smoothstep(0.02, 0.15, hsv.y);
+    hsv.x = fract(hsv.x + dh/100.0*(30.0/360.0)*gate + 1.0);
+    hsv.y = clamp(hsv.y*(1.0 + ds/100.0*gate), 0.0, 1.0);
+    hsv.z = clamp(hsv.z*(1.0 + dl/100.0*0.6*gate), 0.0, 1.0);
+    c = hsv2rgb(hsv);
+  }
+  if(uBW==1) c = vec3(luma(c));
+  if(uUseCurve==1){
+    c = vec3(texture2D(uCurve, vec2(c.r*255.0/256.0+0.5/256.0, 0.5)).r,
+             texture2D(uCurve, vec2(c.g*255.0/256.0+0.5/256.0, 0.5)).r,
+             texture2D(uCurve, vec2(c.b*255.0/256.0+0.5/256.0, 0.5)).r);
+  }
+  l = luma(c);
+  float wSh = 1.0 - smoothstep(0.15, 0.55, l); float wHi = smoothstep(0.45, 0.85, l);
+  float wMi = clamp(1.0 - wSh - wHi, 0.0, 1.0);
+  c += (uGrSh.rgb - luma(uGrSh.rgb))*uGrSh.a*wSh*0.3;
+  c += (uGrMi.rgb - luma(uGrMi.rgb))*uGrMi.a*wMi*0.3;
+  c += (uGrHi.rgb - luma(uGrHi.rgb))*uGrHi.a*wHi*0.3;
+  if(uVig != 0.0){
+    vec2 q = vPos * uAspect; float dd = length(q);
+    float f = smoothstep(0.35 + uVigMid/100.0*0.5, 1.6, dd);
+    if(uVig < 0.0) c *= 1.0 + uVig/100.0*f*0.9; else c = mix(c, vec3(1.0), uVig/100.0*f*0.7);
+  }
+  if(uGrain > 0.0){
+    float n = hash(gl_FragCoord.xy + uSeed) - 0.5;
+    c += n*uGrain/100.0*0.3*(1.0 - abs(luma(c)*2.0-1.0)*0.5);
+  }
+  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+}`;
 
-uploadZone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  uploadZone.classList.remove('dragover');
-  handleFiles(e.dataTransfer.files);
-});
+class Renderer {
+  constructor(canvas) {
+    const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, antialias: false, premultipliedAlpha: false });
+    if (!gl) throw new Error('WebGL is not available in this browser.');
+    this.gl = gl; this.canvas = canvas;
+    this.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    const sh = (type, src) => {
+      const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+      return s;
+    };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    gl.useProgram(prog); this.prog = prog;
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    this.U = {};
+    const n = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(prog, i).name.replace('[0]', ''); this.U[nm] = gl.getUniformLocation(prog, nm); }
+    const mk = (unit) => {
+      const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      return t;
+    };
+    this.texSrc = mk(0); this.texCurve = mk(1); this.texLut = mk(2);
+    gl.uniform1i(this.U.uTex, 0); gl.uniform1i(this.U.uCurve, 1); gl.uniform1i(this.U.uLut, 2);
+    this.curveKey = null; this.lutRef = undefined; this.sw = 1; this.sh = 1; this.ready = false;
+  }
+  setSource(source, w, h) { this.source = source; this.sw = w; this.sh = h; this.upload(); }
+  upload() {
+    if (!this.source) return;
+    const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.texSrc);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.source);
+    this.ready = true;
+  }
+  setLut(lut) {
+    if (this.lutRef === lut) return;
+    this.lutRef = lut;
+    if (!lut) return;
+    const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.texLut);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, lut.size * lut.size, lut.size, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut.data);
+  }
+  setCurve(curve) {
+    const key = JSON.stringify(curve);
+    if (key === this.curveKey) return;
+    this.curveKey = key;
+    const f = curveFn(curve), d = new Uint8Array(256 * 4);
+    for (let i = 0; i < 256; i++) { const v = Math.round(f(i / 255) * 255); d[i * 4] = v; d[i * 4 + 1] = v; d[i * 4 + 2] = v; d[i * 4 + 3] = 255; }
+    const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.texCurve);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, d);
+  }
+  draw(s, o = {}) {
+    if (!this.ready) return;
+    const gl = this.gl, U = this.U, W = this.canvas.width, H = this.canvas.height;
+    gl.viewport(0, 0, W, H);
+    this.setCurve(s.curve);
+    let sx = 1, sy = 1, ox = 0, oy = 0;
+    if (o.cover) {
+      const sa = this.sw / this.sh, oa = W / H;
+      if (oa > sa) { sy = sa / oa; oy = (1 - sy) / 2; } else { sx = oa / sa; ox = (1 - sx) / 2; }
+    }
+    gl.uniform2f(U.uUvScale, sx, sy); gl.uniform2f(U.uUvOffset, ox, oy);
+    gl.uniform2f(U.uTexel, 1 / this.sw, 1 / this.sh);
+    gl.uniform1f(U.uDetailScale, Math.max(this.sw, this.sh) / 1200);
+    const a = W / H; gl.uniform2f(U.uAspect, a >= 1 ? 1 : a, a >= 1 ? 1 / a : 1);
+    gl.uniform1i(U.uProfile, PROFILE_ID[s.profile] || 0);
+    gl.uniform1i(U.uBW, s.bw ? 1 : 0);
+    gl.uniform1i(U.uUseCurve, curveIsIdentity(s.curve) ? 0 : 1);
+    const lut = this.lutRef, useLut = lut && s.lutAmt > 0;
+    gl.uniform1i(U.uUseLut, useLut ? 1 : 0);
+    gl.uniform1f(U.uLutSize, lut ? lut.size : 2); gl.uniform1f(U.uLutAmt, (s.lutAmt || 0) / 100);
+    gl.uniform1f(U.uTemp, s.temp); gl.uniform1f(U.uTint, s.tint); gl.uniform1f(U.uExposure, s.exposure);
+    gl.uniform1f(U.uContrast, s.contrast); gl.uniform1f(U.uHighlights, s.highlights); gl.uniform1f(U.uShadows, s.shadows);
+    gl.uniform1f(U.uWhites, s.whites); gl.uniform1f(U.uBlacks, s.blacks);
+    gl.uniform1f(U.uClarity, s.clarity); gl.uniform1f(U.uSharpen, s.sharpen);
+    gl.uniform1f(U.uVibrance, s.vibrance); gl.uniform1f(U.uSaturation, s.saturation);
+    const H8 = [], S8 = [], L8 = []; let any = false;
+    for (let i = 0; i < 8; i++) { H8.push(s['h' + i]); S8.push(s['s' + i]); L8.push(s['l' + i]); if (s['h' + i] || s['s' + i] || s['l' + i]) any = true; }
+    gl.uniform1fv(U.uHslH, H8); gl.uniform1fv(U.uHslS, S8); gl.uniform1fv(U.uHslL, L8);
+    gl.uniform1i(U.uUseHsl, any ? 1 : 0);
+    const gr = (h, sat) => { const c = hsvToRgb(h / 360, 1, 1); return [c[0], c[1], c[2], sat / 100]; };
+    gl.uniform4fv(U.uGrSh, gr(s.shH, s.shS)); gl.uniform4fv(U.uGrMi, gr(s.miH, s.miS)); gl.uniform4fv(U.uGrHi, gr(s.hiH, s.hiS));
+    gl.uniform1f(U.uVig, s.vig); gl.uniform1f(U.uVigMid, s.vigMid); gl.uniform1f(U.uGrain, s.grain);
+    gl.uniform1f(U.uSeed, o.seed || 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+}
 
-const uploadStatus = document.getElementById('uploadStatus');
-const setStatus = (t) => { uploadStatus.textContent = t; };
+/* ---------- app state ---------- */
+const state = { media: [], cur: -1, before: false, clipboard: null, dirty: true, frame: 0, exporting: false };
+const cur = () => state.media[state.cur] || null;
+let main, thumbR;
+const viewCanvas = $('#view');
+try {
+  main = new Renderer(viewCanvas);
+  thumbR = new Renderer(document.createElement('canvas'));
+} catch (e) {
+  toast('This browser could not start WebGL, so editing is unavailable: ' + e.message, 12000);
+}
+const THUMB_W = 112, THUMB_H = 76;
+if (thumbR) { thumbR.canvas.width = THUMB_W; thumbR.canvas.height = THUMB_H; }
 
-window.addEventListener('error', (e) => setStatus('Error: ' + e.message));
-window.addEventListener('unhandledrejection', (e) => setStatus('Error: ' + (e.reason && e.reason.message || e.reason)));
-
-document.getElementById('pickBtn').addEventListener('click', () => {
-  setStatus('Opening file picker...');
-  try { fileInput.click(); } catch (err) { setStatus('Picker blocked: ' + err.message); }
-});
-uploadZone.addEventListener('click', () => setStatus('Opening file picker...'));
-
-fileInput.addEventListener('change', async (e) => {
-  const n = e.target.files.length;
-  if (!n) { setStatus('No file selected.'); return; }
-  setStatus('Loading ' + n + ' file' + (n > 1 ? 's' : '') + '...');
-  await handleFiles(e.target.files);
-  setStatus('Loaded ' + state.mediaFiles.length + ' file' + (state.mediaFiles.length > 1 ? 's' : '') + '.');
-});
-
-// DNG is TIFF-based; most files embed a full JPEG preview. Use the first one found.
-async function extractDngPreview(file) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
+/* ---------- DNG preview extraction ---------- */
+async function dngPreview(file) {
+  const buf = await file.arrayBuffer(), dv = new DataView(buf), len = buf.byteLength;
+  const bo = dv.getUint16(0);
+  if (bo !== 0x4949 && bo !== 0x4d4d) return null;
+  const le = bo === 0x4949;
+  if (dv.getUint16(2, le) !== 42) return null;
+  const u16 = (o) => dv.getUint16(o, le), u32 = (o) => dv.getUint32(o, le);
+  const cands = [], seen = new Set(); let orient = 1;
+  const SZ = { 1: 1, 2: 1, 3: 2, 4: 4, 6: 1, 7: 1, 8: 2, 9: 4, 13: 4 };
+  function readIfd(off, root) {
+    if (!off || off + 2 > len || seen.has(off)) return 0;
+    seen.add(off);
+    const n = u16(off), t = {};
+    for (let i = 0; i < n; i++) {
+      const e = off + 2 + i * 12; if (e + 12 > len) break;
+      const tag = u16(e), type = u16(e + 2), cnt = u32(e + 4), sz = SZ[type] || 1, total = sz * cnt;
+      const vo = total <= 4 ? e + 8 : u32(e + 8);
+      if (vo + Math.min(total, sz * 64) > len) continue;
+      const vals = [];
+      for (let k = 0; k < Math.min(cnt, 64); k++) vals.push(sz === 2 ? u16(vo + k * 2) : sz === 4 ? u32(vo + k * 4) : dv.getUint8(vo + k));
+      t[tag] = { cnt, vals };
+    }
+    if (root && t[274]) orient = t[274].vals[0];
+    const comp = t[259] && t[259].vals[0], photo = t[262] && t[262].vals[0];
+    const area = ((t[256] && t[256].vals[0]) || 0) * ((t[257] && t[257].vals[0]) || 0);
+    if (t[273] && t[279] && t[273].cnt === 1 && (comp === 7 || comp === 6) && (photo === 6 || photo === 2)) cands.push({ off: t[273].vals[0], n: t[279].vals[0], area });
+    if (t[513] && t[514]) cands.push({ off: t[513].vals[0], n: t[514].vals[0], area: area || 1 });
+    if (t[330]) t[330].vals.forEach(o => readIfd(o, false));
+    return u32(off + 2 + n * 12);
+  }
+  let next = u32(4), guard = 0;
+  while (next && guard++ < 6) next = readIfd(next, guard === 1);
+  cands.sort((a, b) => b.area - a.area || b.n - a.n);
+  for (const c of cands) {
+    if (c.off + c.n <= len && dv.getUint8(c.off) === 0xFF && dv.getUint8(c.off + 1) === 0xD8) {
+      return { blob: new Blob([buf.slice(c.off, c.off + c.n)], { type: 'image/jpeg' }), orient };
+    }
+  }
+  const bytes = new Uint8Array(buf);
   for (let i = 0; i < bytes.length - 3; i++) {
     if (bytes[i] === 0xFF && bytes[i + 1] === 0xD8 && bytes[i + 2] === 0xFF) {
-      for (let j = bytes.length - 2; j > i; j--) {
-        if (bytes[j] === 0xFF && bytes[j + 1] === 0xD9) {
-          return URL.createObjectURL(new Blob([bytes.subarray(i, j + 2)], { type: 'image/jpeg' }));
-        }
-      }
+      for (let j = bytes.length - 2; j > i; j--) if (bytes[j] === 0xFF && bytes[j + 1] === 0xD9) return { blob: new Blob([bytes.subarray(i, j + 2)], { type: 'image/jpeg' }), orient };
       break;
     }
   }
   return null;
 }
+function applyOrientation(img, orient) {
+  if (!orient || orient === 1) return { src: img, w: img.naturalWidth, h: img.naturalHeight };
+  const w = img.naturalWidth, h = img.naturalHeight, swap = orient >= 5;
+  const c = document.createElement('canvas'); c.width = swap ? h : w; c.height = swap ? w : h;
+  const x = c.getContext('2d');
+  const T = { 2: [-1, 0, 0, 1, w, 0], 3: [-1, 0, 0, -1, w, h], 4: [1, 0, 0, -1, 0, h], 5: [0, 1, 1, 0, 0, 0], 6: [0, 1, -1, 0, h, 0], 7: [0, -1, -1, 0, h, w], 8: [0, -1, 1, 0, 0, w] }[orient];
+  if (T) x.setTransform(...T);
+  x.drawImage(img, 0, 0);
+  return { src: c, w: c.width, h: c.height };
+}
+function loadImg(url) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('decode')); i.src = url; });
+}
 
-async function handleFiles(files) {
+/* ---------- LUT parsing ---------- */
+function parseCube(text, maxTex) {
+  let size = 0, dmin = [0, 0, 0], dmax = [1, 1, 1], title = ''; const vals = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const l = raw.trim();
+    if (!l || l[0] === '#') continue;
+    if (l.startsWith('TITLE')) { title = l.replace(/^TITLE\s*/, '').replace(/"/g, ''); continue; }
+    if (l.startsWith('LUT_1D_SIZE')) throw new Error('1D LUTs are not supported. Use a 3D .cube file.');
+    if (l.startsWith('LUT_3D_SIZE')) { size = parseInt(l.split(/\s+/)[1], 10); continue; }
+    if (l.startsWith('DOMAIN_MIN')) { dmin = l.split(/\s+/).slice(1).map(Number); continue; }
+    if (l.startsWith('DOMAIN_MAX')) { dmax = l.split(/\s+/).slice(1).map(Number); continue; }
+    if (/^[-+0-9.]/.test(l)) { const p = l.split(/\s+/).map(Number); if (p.length >= 3) vals.push(p[0], p[1], p[2]); }
+  }
+  if (!size || vals.length !== size ** 3 * 3) throw new Error('This .cube file is not a valid 3D LUT.');
+  if (size * size > maxTex) throw new Error('This LUT is too large for this device. Use a size of ' + Math.floor(Math.sqrt(maxTex)) + ' or less.');
+  const data = new Uint8Array(size * size * size * 4);
+  for (let b = 0; b < size; b++) for (let g = 0; g < size; g++) for (let r = 0; r < size; r++) {
+    const i = (r + g * size + b * size * size) * 3, o = (g * size * size + b * size + r) * 4;
+    for (let k = 0; k < 3; k++) data[o + k] = Math.round(clamp((vals[i + k] - dmin[k]) / (dmax[k] - dmin[k]), 0, 1) * 255);
+    data[o + 3] = 255;
+  }
+  return { size, data, title };
+}
+
+/* ---------- import ---------- */
+async function importFiles(files) {
+  if (!main) return;
+  let selectNext = true;
   for (const file of Array.from(files)) {
-    const lower = file.name.toLowerCase();
-    const isImage = /\.(dng|tif|tiff|jpg|jpeg|png)$/.test(lower) || file.type.startsWith('image/');
-    const entry = { file, name: file.name, type: isImage ? 'image' : 'video', url: null, note: '' };
-
-    if (/\.(dng|tif|tiff)$/.test(lower)) {
-      entry.url = await extractDngPreview(file);
-      entry.note = entry.url ? 'Embedded preview' : 'No preview found';
-    } else {
-      entry.url = URL.createObjectURL(file);
-    }
-    state.mediaFiles.push(entry);
+    try {
+      const name = file.name.toLowerCase();
+      if (name.endsWith('.cube')) { await applyLutFile(file); continue; }
+      const isVid = file.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|mkv|mxf)$/.test(name);
+      const isImg = file.type.startsWith('image/') || /\.(dng|tif|tiff|jpe?g|png|webp|avif|heic|heif)$/.test(name);
+      if (!isVid && !isImg) { toast('Unsupported file: ' + file.name); continue; }
+      const m = isVid ? await loadVideo(file) : await loadImage(file);
+      if (m) { addMedia(m, selectNext); selectNext = false; }
+    } catch (e) { toast(file.name + ': ' + e.message); }
   }
-  fileInput.value = '';
-  renderMediaList();
-  if (state.currentMedia === null && state.mediaFiles.length) selectMedia(0);
+  $('#fileInput').value = '';
 }
-
-function renderMediaList() {
-  mediaList.innerHTML = state.mediaFiles.map((media, idx) => `
-    <div class="media-item ${state.currentMedia === idx ? 'active' : ''}" onclick="selectMedia(${idx})">
-      <div>${media.name}</div>
-      <div class="media-type">${media.type.toUpperCase()}${media.note ? ' · ' + media.note : ''}</div>
-    </div>
-  `).join('');
-}
-
-function selectMedia(idx) {
-  state.currentMedia = idx;
-  const media = state.mediaFiles[idx];
-
-  previewContainer.innerHTML = '';
-
-  if (!media.url) {
-    previewContainer.innerHTML = '<div class="preview-placeholder">This file has no embedded preview the browser can show.</div>';
-    renderMediaList();
-    return;
+async function loadImage(file) {
+  const name = file.name.toLowerCase(); let orient = 1, blob = file, note = '';
+  if (/\.(dng|tif|tiff)$/.test(name)) {
+    const p = await dngPreview(file);
+    if (!p) throw new Error('No embedded preview found. Browsers cannot decode raw sensor data.');
+    blob = p.blob; orient = p.orient; note = 'DNG preview';
   }
-
-  if (media.type === 'video') {
-    const video = document.createElement('video');
-    video.src = media.url;
-    video.controls = true;
-    previewContainer.appendChild(video);
-  } else {
-    const canvas = document.createElement('canvas');
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      applyAdjustments(canvas);
-    };
-    img.src = media.url;
-    previewContainer.appendChild(canvas);
+  const url = URL.createObjectURL(blob);
+  let img; try { img = await loadImg(url); } catch (e) { throw new Error('This browser cannot decode the image.'); }
+  let { src, w, h } = applyOrientation(img, orient);
+  const cap = Math.min(main.maxTex, 8192);
+  if (Math.max(w, h) > cap) {
+    const f = cap / Math.max(w, h), c = document.createElement('canvas');
+    c.width = Math.round(w * f); c.height = Math.round(h * f); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+    src = c; w = c.width; h = c.height;
   }
-
-  renderMediaList();
+  return { type: 'image', name: file.name, src, w, h, note };
 }
-
-function applyAdjustments(canvas) {
-  const ctx = canvas.getContext('2d');
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-
-  const exp = state.adjustments.exposure / 100;
-  const cont = 1 + state.adjustments.contrast / 100;
-  const sat = 1 + state.adjustments.saturation / 100;
-  const temp = state.adjustments.temperature / 50;
-  const tint = state.adjustments.tint / 50;
-  const highlights = state.adjustments.highlights / 100;
-  const shadows = state.adjustments.shadows / 100;
-
-  for (let i = 0; i < data.length; i += 4) {
-    let r = data[i] / 255;
-    let g = data[i + 1] / 255;
-    let b = data[i + 2] / 255;
-
-    // Exposure
-    r *= Math.pow(2, exp);
-    g *= Math.pow(2, exp);
-    b *= Math.pow(2, exp);
-
-    // Contrast
-    r = 0.5 + (r - 0.5) * cont;
-    g = 0.5 + (g - 0.5) * cont;
-    b = 0.5 + (b - 0.5) * cont;
-
-    // Temperature (warm/cool)
-    r += temp * 0.2;
-    b -= temp * 0.2;
-
-    // Tint (green/magenta)
-    g += tint * 0.2;
-    r -= tint * 0.1;
-    b -= tint * 0.1;
-
-    // Highlights/Shadows
-    const brightness = (r + g + b) / 3;
-    if (brightness > 0.5) {
-      const factor = 1 + highlights * 0.5;
-      r = brightness + (r - brightness) * factor;
-      g = brightness + (g - brightness) * factor;
-      b = brightness + (b - brightness) * factor;
-    } else {
-      const factor = 1 + shadows * 0.5;
-      r = brightness + (r - brightness) * factor;
-      g = brightness + (g - brightness) * factor;
-      b = brightness + (b - brightness) * factor;
-    }
-
-    // Saturation
-    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-    r = gray + (r - gray) * sat;
-    g = gray + (g - gray) * sat;
-    b = gray + (b - gray) * sat;
-
-    // Clamp values
-    r = Math.max(0, Math.min(1, r));
-    g = Math.max(0, Math.min(1, g));
-    b = Math.max(0, Math.min(1, b));
-
-    data[i] = r * 255;
-    data[i + 1] = g * 255;
-    data[i + 2] = b * 255;
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-}
-
-// Control event listeners
-['exposure', 'contrast', 'saturation', 'temperature', 'tint', 'highlights', 'shadows'].forEach(key => {
-  const input = document.getElementById(key);
-  input.addEventListener('input', (e) => {
-    state.adjustments[key] = parseInt(e.target.value);
-    document.getElementById(key + 'Value').textContent = e.target.value;
-
-    if (state.currentMedia !== null) {
-      const media = state.mediaFiles[state.currentMedia];
-      if (media.type === 'image') {
-        const canvas = previewContainer.querySelector('canvas');
-        if (canvas) {
-          const img = new Image();
-          img.onload = () => {
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            applyAdjustments(canvas);
-          };
-          img.src = media.url;
-        }
-      }
-    }
+async function loadVideo(file) {
+  const v = document.createElement('video');
+  v.muted = true; v.playsInline = true; v.preload = 'auto'; v.loop = true; v.setAttribute('playsinline', '');
+  v.src = URL.createObjectURL(file);
+  await new Promise((res, rej) => {
+    v.onloadeddata = res;
+    v.onerror = () => rej(new Error('This browser cannot decode this video. 10-bit HEVC LOG files often need Safari or a transcode to H.264.'));
   });
-});
+  if (!v.videoWidth) throw new Error('This browser cannot decode this video.');
+  await new Promise(res => { v.onseeked = res; v.currentTime = Math.min(0.05, v.duration / 2 || 0); });
+  return { type: 'video', name: file.name, src: v, w: v.videoWidth, h: v.videoHeight, note: 'Video ' + fmtTime(v.duration) };
+}
+function addMedia(m, select = true) {
+  const s = clone(DEFAULTS);
+  Object.assign(m, { settings: s, hist: [{ label: 'Import', s: clone(s) }], hi: 0, rating: 0, flag: '', lut: null });
+  const t = document.createElement('canvas'), f = 256 / Math.max(m.w, m.h);
+  t.width = Math.max(2, Math.round(m.w * f)); t.height = Math.max(2, Math.round(m.h * f));
+  t.getContext('2d').drawImage(m.src, 0, 0, t.width, t.height);
+  m.thumbSrc = t;
+  state.media.push(m);
+  renderFilm();
+  if (select || state.cur < 0) selectMedia(state.media.length - 1);
+}
 
-resetBtn.addEventListener('click', () => {
-  Object.keys(state.adjustments).forEach(key => {
-    state.adjustments[key] = 0;
-    document.getElementById(key).value = 0;
-    document.getElementById(key + 'Value').textContent = '0';
+/* ---------- selection ---------- */
+function sizeMain(m) {
+  const cap = 2400, f = Math.min(1, cap / Math.max(m.w, m.h));
+  viewCanvas.width = Math.max(2, Math.round(m.w * f)); viewCanvas.height = Math.max(2, Math.round(m.h * f));
+}
+function selectMedia(i) {
+  const prev = cur(); if (prev && prev.type === 'video') prev.src.pause();
+  state.cur = i; const m = cur(); if (!m) return;
+  sizeMain(m);
+  main.setSource(m.src, m.w, m.h); main.setLut(m.lut);
+  $('#empty').hidden = true;
+  $('#transport').hidden = m.type !== 'video';
+  $('#infoFile').textContent = m.name; $('#infoDims').textContent = m.w + ' × ' + m.h + (m.note ? ' · ' + m.note : '');
+  if (m.type === 'video') { $('#playBtn').textContent = 'Play'; $('#loopBtn').classList.toggle('on', m.src.loop); $('#muteBtn').textContent = m.src.muted ? 'Muted' : 'Sound'; }
+  syncUI(); renderFilm(); renderHistory(); renderPresetThumbs(); state.dirty = true;
+}
+
+/* ---------- history ---------- */
+function commit(label) {
+  const m = cur(); if (!m) return;
+  const snap = JSON.stringify(m.settings);
+  if (snap === JSON.stringify(m.hist[m.hi].s)) return;
+  m.hist.length = m.hi + 1; m.hist.push({ label, s: JSON.parse(snap) });
+  if (m.hist.length > 120) m.hist.shift();
+  m.hi = m.hist.length - 1;
+  renderHistory(); refreshFilmThumb(state.cur);
+}
+function gotoHistory(i) {
+  const m = cur(); if (!m || i < 0 || i >= m.hist.length) return;
+  m.hi = i; m.settings = clone(m.hist[i].s);
+  syncUI(); renderHistory(); refreshFilmThumb(state.cur); state.dirty = true;
+}
+const undo = () => { const m = cur(); if (m) gotoHistory(m.hi - 1); };
+const redo = () => { const m = cur(); if (m) gotoHistory(m.hi + 1); };
+function setSettings(s, label) {
+  const m = cur(); if (!m) return;
+  m.settings = s; syncUI(); state.dirty = true; commit(label);
+  if (s.profile !== undefined) renderPresetThumbs();
+}
+function renderHistory() {
+  const m = cur(), ul = $('#historyList'); ul.textContent = '';
+  $('#undoBtn').disabled = !m || m.hi === 0; $('#redoBtn').disabled = !m || m.hi >= m.hist.length - 1;
+  if (!m) return;
+  m.hist.slice().reverse().forEach((h, k) => {
+    const i = m.hist.length - 1 - k;
+    ul.append(el('li', { class: (i === m.hi ? 'cur ' : '') + (i > m.hi ? 'future' : ''), text: h.label, onclick: () => gotoHistory(i) }));
   });
+}
 
-  if (state.currentMedia !== null) {
-    const media = state.mediaFiles[state.currentMedia];
-    if (media.type === 'image') {
-      const canvas = previewContainer.querySelector('canvas');
-      if (canvas) {
-        const img = new Image();
-        img.onload = () => {
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
-        };
-        img.src = media.url;
-      }
-    }
-  }
+/* ---------- editor UI ---------- */
+const ctrls = {};
+const fmtVal = (v, step, unsigned) => (step < 1 ? Number(v).toFixed(2) : String(Math.round(v))).replace(/^(\d)/, (unsigned || v <= 0) ? '$1' : '+$1');
+function slider(key, label, min, max, step, opts = {}) {
+  const input = el('input', { type: 'range', min, max, step, value: DEFAULTS[key], id: 'sl_' + key, 'aria-label': label });
+  if (opts.track) input.style.setProperty('--track', opts.track);
+  const val = el('span', { class: 'val' });
+  const upd = (v) => { val.textContent = fmtVal(v, step, opts.unsigned); };
+  const labEl = el('span', { text: label, title: 'Double-click to reset' });
+  const row = el('div', { class: 'row' }, el('div', { class: 'lab' }, labEl, val), input);
+  input.addEventListener('input', () => {
+    const m = cur(); if (!m) return;
+    m.settings[key] = parseFloat(input.value); upd(m.settings[key]); state.dirty = true;
+  });
+  input.addEventListener('change', () => commit(label + ' ' + val.textContent));
+  const reset = () => { const m = cur(); if (!m) return; m.settings[key] = DEFAULTS[key]; input.value = DEFAULTS[key]; upd(DEFAULTS[key]); state.dirty = true; commit(label + ' reset'); };
+  labEl.addEventListener('dblclick', reset); input.addEventListener('dblclick', reset);
+  ctrls[key] = { set: (v) => { input.value = v; upd(v); } };
+  upd(DEFAULTS[key]);
+  return row;
+}
+function section(title, open, ...kids) {
+  const sec = el('section', { class: 'sec' + (open ? '' : ' closed') });
+  const header = el('header', { text: title, tabindex: '0', role: 'button' });
+  const toggle = () => sec.classList.toggle('closed');
+  header.addEventListener('click', toggle);
+  header.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+  sec.append(header, el('div', { class: 'body' }, ...kids));
+  return sec;
+}
+const RAINBOW = 'linear-gradient(90deg,#f33,#ff3,#3f3,#3ff,#33f,#f3f,#f33)';
+function buildEditor() {
+  const ed = $('#editor');
+  const profileSel = el('select', { id: 'profileSel', 'aria-label': 'Input profile' }, PROFILES.map(([v, t]) => el('option', { value: v, text: t })));
+  profileSel.addEventListener('change', () => {
+    const m = cur(); if (!m) return;
+    m.settings.profile = profileSel.value; state.dirty = true; commit('Input ' + profileSel.options[profileSel.selectedIndex].text); renderPresetThumbs(); refreshFilmThumb(state.cur);
+  });
+  ctrls.profile = { set: (v) => { profileSel.value = v; } };
+  const bwBtn = el('button', { class: 'btn small', type: 'button', text: 'Black & White' });
+  bwBtn.addEventListener('click', () => { const m = cur(); if (!m) return; m.settings.bw = !m.settings.bw; bwBtn.classList.toggle('on', m.settings.bw); state.dirty = true; commit(m.settings.bw ? 'Black & White' : 'Color'); renderPresetThumbs(); });
+  ctrls.bw = { set: (v) => bwBtn.classList.toggle('on', !!v) };
+
+  ed.append(
+    section('Basic', true,
+      el('div', { class: 'row' }, el('div', { class: 'lab' }, el('span', { text: 'Input profile' })), profileSel),
+      el('p', { class: 'note', text: 'Converts the LOG curve only. Gamut is not converted, so adjust colour with HSL or load a camera LUT below.', style: 'margin:0 0 4px' }),
+      el('div', { class: 'row' }, el('div', { class: 'lab' }, el('span', { text: 'Treatment' }), bwBtn)),
+      slider('temp', 'Temp', -100, 100, 1, { track: 'linear-gradient(90deg,#3d7fe0,#bbb,#e8a830)' }),
+      slider('tint', 'Tint', -100, 100, 1, { track: 'linear-gradient(90deg,#3dbb5a,#bbb,#d04aa8)' }),
+      slider('exposure', 'Exposure', -5, 5, 0.05),
+      slider('contrast', 'Contrast', -100, 100, 1),
+      slider('highlights', 'Highlights', -100, 100, 1),
+      slider('shadows', 'Shadows', -100, 100, 1),
+      slider('whites', 'Whites', -100, 100, 1),
+      slider('blacks', 'Blacks', -100, 100, 1),
+      slider('clarity', 'Clarity', -100, 100, 1),
+      slider('vibrance', 'Vibrance', -100, 100, 1),
+      slider('saturation', 'Saturation', -100, 100, 1)
+    ),
+    section('Tone Curve', false,
+      el('div', { class: 'curve-wrap' }, el('canvas', { id: 'curve', width: 300, height: 300 })),
+      el('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
+        el('span', { class: 'note', text: 'Tap to add a point. Double-click a point to remove it.' }),
+        el('button', { class: 'btn small', type: 'button', text: 'Reset', onclick: () => { const m = cur(); if (!m) return; m.settings.curve = clone(DEFAULTS.curve); drawCurve(); state.dirty = true; commit('Tone Curve reset'); } }))
+    ),
+    buildHsl(),
+    section('Color Grading', false,
+      el('div', { class: 'note', text: 'Shadows' }),
+      slider('shH', 'Hue', 0, 360, 1, { track: RAINBOW, unsigned: true }), slider('shS', 'Saturation', 0, 100, 1, { unsigned: true }),
+      el('div', { class: 'note', text: 'Midtones' }),
+      slider('miH', 'Hue', 0, 360, 1, { track: RAINBOW, unsigned: true }), slider('miS', 'Saturation', 0, 100, 1, { unsigned: true }),
+      el('div', { class: 'note', text: 'Highlights' }),
+      slider('hiH', 'Hue', 0, 360, 1, { track: RAINBOW, unsigned: true }), slider('hiS', 'Saturation', 0, 100, 1, { unsigned: true })
+    ),
+    section('Detail', false, slider('sharpen', 'Sharpening', 0, 100, 1, { unsigned: true })),
+    section('Effects', false,
+      slider('vig', 'Vignette', -100, 100, 1), slider('vigMid', 'Midpoint', 0, 100, 1, { unsigned: true }),
+      slider('grain', 'Grain', 0, 100, 1, { unsigned: true })
+    ),
+    buildLutSection()
+  );
+  setupCurve();
+}
+function buildHsl() {
+  const rows = { h: [], s: [], l: [] }, names = { h: 'Hue', s: 'Saturation', l: 'Luminance' };
+  const groups = {};
+  ['h', 's', 'l'].forEach(k => {
+    const g = el('div', { class: 'hsl-grid' }); groups[k] = g;
+    BANDS.forEach(([n, col], i) => {
+      const r = slider(k + i, n, -100, 100, 1, { track: k === 'h' ? 'linear-gradient(90deg,#777,' + col + ')' : k === 's' ? 'linear-gradient(90deg,#777,' + col + ')' : 'linear-gradient(90deg,#111,' + col + ',#fff)' });
+      r.querySelector('.lab span').prepend(el('i', { class: 'dot', style: 'background:' + col }));
+      g.append(r);
+    });
+    g.hidden = k !== 'h';
+  });
+  const tabs = el('div', { class: 'tabs' });
+  ['h', 's', 'l'].forEach((k, i) => {
+    const b = el('button', { type: 'button', text: names[k], class: i === 0 ? 'on' : '' });
+    b.addEventListener('click', () => { [...tabs.children].forEach(x => x.classList.remove('on')); b.classList.add('on'); Object.keys(groups).forEach(g => groups[g].hidden = g !== k); });
+    tabs.append(b);
+  });
+  return section('HSL / Colour', false, tabs, groups.h, groups.s, groups.l,
+    el('p', { class: 'note', style: 'margin:0', text: 'In Black & White, Luminance sliders act as the colour mix.' }));
+}
+function buildLutSection() {
+  const nameEl = el('div', { class: 'note', id: 'lutName', text: 'No LUT loaded' });
+  const rm = el('button', { class: 'btn small', type: 'button', text: 'Remove', onclick: () => { const m = cur(); if (!m || !m.lut) return; m.lut = null; main.setLut(null); thumbR.setLut(null); m.settings.lutAmt = 0; syncUI(); state.dirty = true; commit('Remove LUT'); renderPresetThumbs(); refreshFilmThumb(state.cur); } });
+  rm.id = 'lutRemove';
+  return section('Camera LUT', false,
+    el('div', { style: 'display:flex;gap:6px;align-items:center' }, el('label', { class: 'btn small', for: 'lutInput', text: 'Load .cube' }), rm),
+    nameEl,
+    slider('lutAmt', 'Amount', 0, 100, 1, { unsigned: true }),
+    el('p', { class: 'note', style: 'margin:0', text: 'The LUT is applied first, before the input profile. If it already converts LOG to Rec.709, set the profile to Standard.' })
+  );
+}
+async function applyLutFile(file) {
+  const m = cur(); if (!m) { toast('Import a photo or video first, then load the LUT.'); return; }
+  const lut = parseCube(await file.text(), main.maxTex);
+  lut.name = lut.title || file.name;
+  m.lut = lut; main.setLut(lut); thumbR.lutRef = undefined;
+  m.settings.lutAmt = 100; syncUI(); state.dirty = true; commit('LUT ' + lut.name);
+  renderPresetThumbs(); refreshFilmThumb(state.cur);
+}
+function syncUI() {
+  const m = cur(); if (!m) return;
+  for (const k in ctrls) ctrls[k].set(m.settings[k]);
+  drawCurve();
+  $('#lutName').textContent = m.lut ? 'LUT: ' + m.lut.name + ' (' + m.lut.size + '³)' : 'No LUT loaded';
+  $('#lutRemove').hidden = !m.lut;
+}
+
+/* ---------- tone curve editor ---------- */
+let curveCtx, dragIdx = -1;
+function setupCurve() {
+  const cv = $('#curve'); curveCtx = cv.getContext('2d');
+  const pos = (e) => { const r = cv.getBoundingClientRect(); return [clamp((e.clientX - r.left) / r.width, 0, 1), clamp(1 - (e.clientY - r.top) / r.height, 0, 1)]; };
+  const near = (pts, p, rad) => { let b = -1, bd = rad; pts.forEach((q, i) => { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < bd) { bd = d; b = i; } }); return b; };
+  cv.addEventListener('pointerdown', (e) => {
+    const m = cur(); if (!m) return; e.preventDefault(); cv.setPointerCapture(e.pointerId);
+    const p = pos(e), pts = m.settings.curve; let i = near(pts, p, 0.06);
+    if (i < 0) { pts.push(p); pts.sort((a, b) => a[0] - b[0]); i = pts.indexOf(p); }
+    dragIdx = i; drawCurve(); state.dirty = true;
+  });
+  cv.addEventListener('pointermove', (e) => {
+    const m = cur(); if (!m || dragIdx < 0) return;
+    const pts = m.settings.curve, p = pos(e), last = pts.length - 1;
+    let x = p[0];
+    if (dragIdx === 0) x = 0; else if (dragIdx === last) x = 1; else x = clamp(x, pts[dragIdx - 1][0] + 0.02, pts[dragIdx + 1][0] - 0.02);
+    pts[dragIdx] = [x, p[1]]; drawCurve(); state.dirty = true;
+  });
+  const end = () => { if (dragIdx >= 0) { dragIdx = -1; commit('Tone Curve'); } };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  cv.addEventListener('dblclick', (e) => {
+    const m = cur(); if (!m) return; const pts = m.settings.curve, i = near(pts, pos(e), 0.06);
+    if (i > 0 && i < pts.length - 1) { pts.splice(i, 1); drawCurve(); state.dirty = true; commit('Tone Curve'); }
+  });
+}
+function drawCurve() {
+  if (!curveCtx) return;
+  const cv = curveCtx.canvas, W = cv.width, H = cv.height, m = cur(), c = curveCtx;
+  c.clearRect(0, 0, W, H); c.fillStyle = '#1b1b1b'; c.fillRect(0, 0, W, H);
+  c.strokeStyle = '#2f2f2f'; c.lineWidth = 1; c.beginPath();
+  for (let i = 1; i < 4; i++) { c.moveTo(W * i / 4, 0); c.lineTo(W * i / 4, H); c.moveTo(0, H * i / 4); c.lineTo(W, H * i / 4); }
+  c.stroke();
+  c.strokeStyle = '#444'; c.beginPath(); c.moveTo(0, H); c.lineTo(W, 0); c.stroke();
+  const pts = m ? m.settings.curve : DEFAULTS.curve, f = curveFn(pts);
+  c.strokeStyle = '#e6e6e6'; c.lineWidth = 2; c.beginPath();
+  for (let i = 0; i <= 100; i++) { const x = i / 100, y = f(x); i ? c.lineTo(x * W, (1 - y) * H) : c.moveTo(x * W, (1 - y) * H); }
+  c.stroke();
+  pts.forEach((p, i) => { c.fillStyle = i === dragIdx ? '#fff' : '#bbb'; c.strokeStyle = '#000'; c.lineWidth = 1; c.beginPath(); c.arc(p[0] * W, (1 - p[1]) * H, 6, 0, 7); c.fill(); c.stroke(); });
+}
+
+/* ---------- presets ---------- */
+let userPresets = [];
+try { userPresets = JSON.parse(localStorage.getItem('pv_user_presets') || '[]'); } catch (e) { userPresets = []; }
+const saveUserPresets = () => { try { localStorage.setItem('pv_user_presets', JSON.stringify(userPresets)); } catch (e) { toast('Could not store presets in this browser.'); } };
+const presetCanvases = [];
+function presetSettings(p) {
+  const m = cur(), s = Object.assign(clone(DEFAULTS), clone(p));
+  if (m) { if (!('profile' in p)) s.profile = m.settings.profile; s.lutAmt = m.settings.lutAmt; }
+  return s;
+}
+function renderPresets() {
+  const list = $('#presetList'); list.textContent = ''; presetCanvases.length = 0;
+  const groups = userPresets.length ? [['My Presets', userPresets.map(u => [u.name, u.s, true])]].concat(PRESET_GROUPS) : PRESET_GROUPS;
+  groups.forEach(([title, items]) => {
+    const grid = el('div', { class: 'preset-grid' });
+    items.forEach(([name, s, mine]) => {
+      const cv = el('canvas', { width: THUMB_W, height: THUMB_H });
+      const b = el('button', { class: 'preset', type: 'button', title: name }, cv, el('span', { text: name }));
+      b.addEventListener('click', (e) => {
+        if (e.target.classList.contains('del')) return;
+        const m = cur(); if (!m) { toast('Import a file first.'); return; }
+        setSettings(presetSettings(s), 'Preset ' + name);
+        if (window.matchMedia('(max-width: 860px)').matches) toast('Applied ' + name, 1500);
+      });
+      if (mine) b.append(el('button', { class: 'del', type: 'button', text: '×', 'aria-label': 'Delete preset ' + name, onclick: (e) => { e.stopPropagation(); userPresets = userPresets.filter(u => u.name !== name); saveUserPresets(); renderPresets(); renderPresetThumbs(); } }));
+      grid.append(b); presetCanvases.push({ cv, s });
+    });
+    list.append(el('div', { class: 'preset-group' }, el('h4', { text: title }), grid));
+  });
+}
+function renderThumbTo(cv, m, settings) {
+  if (!thumbR || !m) return;
+  thumbR.setSource(m.thumbSrc, m.thumbSrc.width, m.thumbSrc.height); thumbR.setLut(m.lut);
+  thumbR.draw(settings, { cover: true });
+  const x = cv.getContext('2d'); x.drawImage(thumbR.canvas, 0, 0, cv.width, cv.height);
+}
+function renderPresetThumbs() {
+  const m = cur(); if (!m) return;
+  presetCanvases.forEach(({ cv, s }) => renderThumbTo(cv, m, presetSettings(s)));
+}
+$('#savePreset').addEventListener('click', () => {
+  const m = cur(), inp = $('#presetName'), name = inp.value.trim();
+  if (!m) { toast('Import a file first.'); return; }
+  if (!name) { toast('Type a name for the preset first.'); inp.focus(); return; }
+  const s = clone(m.settings); delete s.profile; delete s.lutAmt;
+  userPresets = userPresets.filter(u => u.name !== name); userPresets.unshift({ name, s });
+  saveUserPresets(); inp.value = ''; renderPresets(); renderPresetThumbs(); toast('Saved preset ' + name, 1800);
 });
 
-downloadBtn.addEventListener('click', () => {
-  if (state.currentMedia === null) return;
+/* ---------- filmstrip ---------- */
+function renderFilm() {
+  const fs = $('#filmstrip'); fs.textContent = '';
+  state.media.forEach((m, i) => {
+    const cv = el('canvas', { width: THUMB_W, height: THUMB_H });
+    const meta = el('div', { class: 'meta' });
+    m._cv = cv; m._meta = meta;
+    const b = el('button', { class: 'film' + (i === state.cur ? ' active' : ''), type: 'button', title: m.name, onclick: () => selectMedia(i) }, cv, meta);
+    fs.append(b); renderThumbTo(cv, m, m.settings); updateFilmMeta(m);
+  });
+  const a = fs.querySelector('.active'); if (a) a.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+function updateFilmMeta(m) {
+  if (!m._meta) return; m._meta.textContent = '';
+  m._meta.append(el('span', { class: 'stars', text: '★'.repeat(m.rating) }), el('span', { class: m.flag === 'P' ? 'flag-p' : m.flag === 'X' ? 'flag-x' : '', text: m.type === 'video' && !m.flag ? 'VID' : m.flag }));
+}
+function refreshFilmThumb(i) { const m = state.media[i]; if (m && m._cv) renderThumbTo(m._cv, m, m.settings); }
 
-  const media = state.mediaFiles[state.currentMedia];
-  if (media.type === 'image') {
-    const canvas = previewContainer.querySelector('canvas');
-    if (canvas) {
-      const link = document.createElement('a');
-      link.href = canvas.toDataURL('image/png');
-      link.download = `edited_${media.name}`;
-      link.click();
+/* ---------- histogram ---------- */
+const hctx = $('#histo').getContext('2d'), hSmall = document.createElement('canvas'); hSmall.width = 128; hSmall.height = 72;
+const hsx = hSmall.getContext('2d', { willReadFrequently: true });
+function drawHistogram() {
+  const W = 256, H = 86; hctx.fillStyle = '#1b1b1b'; hctx.fillRect(0, 0, W, H);
+  if (!cur()) return;
+  hsx.drawImage(viewCanvas, 0, 0, 128, 72);
+  const d = hsx.getImageData(0, 0, 128, 72).data, bins = [new Float32Array(256), new Float32Array(256), new Float32Array(256)];
+  for (let i = 0; i < d.length; i += 4) { bins[0][d[i]]++; bins[1][d[i + 1]]++; bins[2][d[i + 2]]++; }
+  let mx = 1; for (const b of bins) for (let i = 2; i < 254; i++) mx = Math.max(mx, b[i]);
+  hctx.globalCompositeOperation = 'lighter';
+  ['rgba(220,60,50,.85)', 'rgba(60,200,80,.85)', 'rgba(70,110,235,.85)'].forEach((col, k) => {
+    hctx.fillStyle = col; hctx.beginPath(); hctx.moveTo(0, H);
+    for (let i = 0; i < 256; i++) hctx.lineTo(i, H - Math.min(1, bins[k][i] / mx) * (H - 4));
+    hctx.lineTo(255, H); hctx.fill();
+  });
+  hctx.globalCompositeOperation = 'source-over';
+  const tot = 128 * 72, clipLo = (bins[0][0] + bins[1][0] + bins[2][0]) / (3 * tot), clipHi = (bins[0][255] + bins[1][255] + bins[2][255]) / (3 * tot);
+  hctx.fillStyle = clipLo > 0.005 ? '#9ab' : '#444'; hctx.beginPath(); hctx.moveTo(2, 2); hctx.lineTo(12, 2); hctx.lineTo(2, 12); hctx.fill();
+  hctx.fillStyle = clipHi > 0.005 ? '#fff' : '#444'; hctx.beginPath(); hctx.moveTo(W - 2, 2); hctx.lineTo(W - 12, 2); hctx.lineTo(W - 2, 12); hctx.fill();
+}
+
+/* ---------- render loop ---------- */
+function loop() {
+  const m = cur();
+  if (m && main && !state.exporting) {
+    const playing = m.type === 'video' && !m.src.paused;
+    if (state.dirty || playing) {
+      if (m.type === 'video' && m.src.readyState >= 2) main.upload();
+      main.draw(state.before ? ORIGINAL : m.settings, { seed: m.type === 'video' ? (state.frame % 97) * 3.7 : 0 });
+      if (state.dirty || state.frame % 6 === 0) drawHistogram();
+      if (m.type === 'video') updateTransport();
+      state.dirty = false; state.frame++;
     }
   }
+  requestAnimationFrame(loop);
+}
+
+/* ---------- transport ---------- */
+let scrubbing = false;
+function updateTransport() {
+  const m = cur(); if (!m || m.type !== 'video') return; const v = m.src;
+  if (!scrubbing) $('#scrub').value = v.duration ? Math.round(v.currentTime / v.duration * 1000) : 0;
+  $('#timeLabel').textContent = fmtTime(v.currentTime) + ' / ' + fmtTime(v.duration);
+  $('#playBtn').textContent = v.paused ? 'Play' : 'Pause';
+}
+function togglePlay() { const m = cur(); if (!m || m.type !== 'video') return; const v = m.src; if (v.paused) v.play().catch(() => toast('Playback was blocked. Tap Play again.')); else v.pause(); state.dirty = true; updateTransport(); }
+$('#playBtn').addEventListener('click', togglePlay);
+$('#scrub').addEventListener('input', (e) => { const m = cur(); if (!m) return; scrubbing = true; m.src.currentTime = (e.target.value / 1000) * m.src.duration; });
+$('#scrub').addEventListener('change', () => { scrubbing = false; });
+$('#muteBtn').addEventListener('click', () => { const m = cur(); if (!m) return; m.src.muted = !m.src.muted; $('#muteBtn').textContent = m.src.muted ? 'Muted' : 'Sound'; });
+$('#loopBtn').addEventListener('click', () => { const m = cur(); if (!m) return; m.src.loop = !m.src.loop; $('#loopBtn').classList.toggle('on', m.src.loop); });
+document.addEventListener('seeked', () => { state.dirty = true; }, true);
+
+/* ---------- toolbar ---------- */
+$('#fileInput').addEventListener('change', (e) => importFiles(e.target.files));
+$('#lutInput').addEventListener('change', async (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) { try { await applyLutFile(f); } catch (err) { toast(err.message); } } });
+$('#undoBtn').addEventListener('click', undo); $('#redoBtn').addEventListener('click', redo);
+$('#copyBtn').addEventListener('click', () => { const m = cur(); if (!m) return; state.clipboard = clone(m.settings); toast('Settings copied', 1400); });
+$('#pasteBtn').addEventListener('click', () => {
+  const m = cur(); if (!m || !state.clipboard) { toast('Copy settings from another file first.'); return; }
+  const s = clone(state.clipboard); s.lutAmt = m.lut ? s.lutAmt : 0; setSettings(s, 'Paste settings');
 });
+$('#resetBtn').addEventListener('click', () => { const m = cur(); if (!m) return; const s = clone(DEFAULTS); setSettings(s, 'Reset all'); });
+function toggleBefore() { state.before = !state.before; $('#beforeBtn').classList.toggle('on', state.before); $('#beforeBadge').hidden = !state.before; state.dirty = true; }
+$('#beforeBtn').addEventListener('click', toggleBefore);
+document.querySelectorAll('.tabbar button').forEach(b => b.addEventListener('click', () => {
+  document.body.dataset.tab = b.dataset.tab; document.querySelectorAll('.tabbar button').forEach(x => x.classList.toggle('on', x === b));
+}));
+
+/* ---------- drag & drop ---------- */
+const viewer = $('#viewer');
+['dragenter', 'dragover'].forEach(t => window.addEventListener(t, (e) => { e.preventDefault(); viewer.classList.add('dropping'); }));
+['dragleave', 'drop'].forEach(t => window.addEventListener(t, (e) => { e.preventDefault(); if (t === 'drop' || e.target === document.documentElement) viewer.classList.remove('dropping'); }));
+window.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files.length) importFiles(e.dataTransfer.files); });
+
+/* ---------- keyboard ---------- */
+window.addEventListener('keydown', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' && e.target.type !== 'range' || tag === 'select' || tag === 'textarea') return;
+  const mod = e.ctrlKey || e.metaKey, m = cur();
+  if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'c') { e.preventDefault(); $('#copyBtn').click(); return; }
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'v') { e.preventDefault(); $('#pasteBtn').click(); return; }
+  if (mod) return;
+  if (e.key === '\\') { toggleBefore(); return; }
+  if (!m) return;
+  if (e.key === ' ' && m.type === 'video' && tag !== 'button') { e.preventDefault(); togglePlay(); return; }
+  if (e.key === 'ArrowRight' && tag !== 'input') { if (state.cur < state.media.length - 1) selectMedia(state.cur + 1); return; }
+  if (e.key === 'ArrowLeft' && tag !== 'input') { if (state.cur > 0) selectMedia(state.cur - 1); return; }
+  if (/^[0-5]$/.test(e.key)) { m.rating = +e.key; updateFilmMeta(m); return; }
+  if (e.key.toLowerCase() === 'p') { m.flag = m.flag === 'P' ? '' : 'P'; updateFilmMeta(m); return; }
+  if (e.key.toLowerCase() === 'x') { m.flag = m.flag === 'X' ? '' : 'X'; updateFilmMeta(m); }
+});
+
+/* ---------- export ---------- */
+const pop = $('#exportPop');
+function download(blob, name) {
+  const url = URL.createObjectURL(blob), a = el('a', { href: url, download: name });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+$('#exportBtn').addEventListener('click', () => {
+  const m = cur(); if (!m) { toast('Import a file first.'); return; }
+  const sel = $('#expFormat'); sel.textContent = '';
+  const opts = m.type === 'image' ? [['image/jpeg', 'JPEG'], ['image/png', 'PNG']] : [['video', 'Video (WebM / MP4)']];
+  opts.forEach(([v, t]) => sel.append(el('option', { value: v, text: t })));
+  $('#expNote').textContent = m.type === 'video'
+    ? 'Video only (no audio). The edit is recorded in real time while the clip plays, at up to 2400 px on the long edge. Keep this tab open.'
+    : 'Exports at full source resolution with all edits applied. For DNG files this is the embedded preview, not the raw data.';
+  updateExpQual(); pop.hidden = !pop.hidden;
+});
+function updateExpQual() { $('#expQualRow').hidden = $('#expFormat').value !== 'image/jpeg'; $('#expQualVal').textContent = $('#expQual').value; }
+$('#expFormat').addEventListener('change', updateExpQual); $('#expQual').addEventListener('input', updateExpQual);
+$('#expCancel').addEventListener('click', () => { if (state.exporting && state.cancelExport) state.cancelExport(); pop.hidden = true; });
+$('#expGo').addEventListener('click', async () => {
+  const m = cur(); if (!m) return;
+  try { m.type === 'image' ? await exportImage(m) : await exportVideo(m); } catch (e) { toast('Export failed: ' + e.message, 7000); state.exporting = false; sizeMain(m); state.dirty = true; }
+});
+async function exportImage(m) {
+  const fmt = $('#expFormat').value, q = $('#expQual').value / 100;
+  let w = m.w, h = m.h; const f = Math.min(1, main.maxTex / Math.max(w, h), Math.sqrt(16e6 / (w * h)));
+  w = Math.round(w * f); h = Math.round(h * f);
+  state.exporting = true; viewCanvas.width = w; viewCanvas.height = h;
+  main.draw(m.settings);
+  const blob = await new Promise(r => viewCanvas.toBlob(r, fmt, q));
+  state.exporting = false; sizeMain(m); state.dirty = true;
+  if (!blob) throw new Error('The browser could not encode the image.');
+  const ext = fmt === 'image/png' ? 'png' : 'jpg', base = m.name.replace(/\.[^.]+$/, ''), fname = base + '-edit.' + ext;
+  const file = new File([blob], fname, { type: fmt });
+  if (window.matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); pop.hidden = true; return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  download(blob, fname); pop.hidden = true; toast('Exported ' + fname, 2500);
+}
+async function exportVideo(m) {
+  if (!window.MediaRecorder) throw new Error('This browser cannot record video.');
+  const types = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+  const mime = types.find(t => MediaRecorder.isTypeSupported(t)); if (!mime) throw new Error('No supported video format found in this browser.');
+  const v = m.src, wasLoop = v.loop; v.pause(); v.loop = false; v.currentTime = 0;
+  await new Promise(r => { v.onseeked = r; if (v.currentTime === 0) r(); });
+  state.dirty = true; main.upload(); main.draw(m.settings);
+  const rec = new MediaRecorder(viewCanvas.captureStream(30), { mimeType: mime, videoBitsPerSecond: 12e6 }), chunks = [];
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  let cancelled = false; state.cancelExport = () => { cancelled = true; v.pause(); };
+  const done = new Promise(r => { rec.onstop = r; });
+  const finish = () => { if (rec.state !== 'inactive') rec.stop(); };
+  v.onended = finish; v.onpause = () => { if (cancelled) finish(); };
+  $('#expGo').disabled = true; $('#expCancel').textContent = 'Cancel';
+  rec.start(); await v.play();
+  const tick = setInterval(() => { $('#expNote').textContent = 'Recording ' + fmtTime(v.currentTime) + ' / ' + fmtTime(v.duration); }, 400);
+  await done; clearInterval(tick);
+  v.onended = null; v.onpause = null; v.loop = wasLoop; state.cancelExport = null;
+  $('#expGo').disabled = false; $('#expCancel').textContent = 'Close';
+  if (cancelled) { toast('Export cancelled', 2000); return; }
+  const ext = mime.startsWith('video/mp4') ? 'mp4' : 'webm', fname = m.name.replace(/\.[^.]+$/, '') + '-edit.' + ext;
+  download(new Blob(chunks, { type: mime.split(';')[0] }), fname); pop.hidden = true; toast('Exported ' + fname, 2500);
+}
+
+/* ---------- boot ---------- */
+buildEditor(); renderPresets(); renderHistory(); drawCurve();
+if (main) requestAnimationFrame(loop);
+window.__pv = { state, importFiles };
 </script>
 </body>
 </html>
