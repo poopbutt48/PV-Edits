@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LOG &amp; RAW Editor</title>
+<style>
+:root {
+  /* Design: Dark professional color grading workspace */
+  --bg-dark: #1a1a1a;
+  --bg-light: #2a2a2a;
+  --bg-lighter: #363636;
+  --fg: #e0e0e0;
+  --fg-dim: #a0a0a0;
+  --accent: #00d4ff;
+  --accent-hover: #00e8ff;
+  --danger: #ff6b35;
+  --success: #4caf50;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg-dark);
+  color: var(--fg);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg-dark: #f5f5f5;
+    --bg-light: #ffffff;
+    --bg-lighter: #f9f9f9;
+    --fg: #2a2a2a;
+    --fg-dim: #666;
+    --accent: #0099cc;
+    --accent-hover: #0080aa;
+    --danger: #d32f2f;
+    --success: #388e3c;
+    color-scheme: light;
+  }
+}
+
+:root[data-theme="light"] {
+  --bg-dark: #f5f5f5;
+  --bg-light: #ffffff;
+  --bg-lighter: #f9f9f9;
+  --fg: #2a2a2a;
+  --fg-dim: #666;
+  --accent: #0099cc;
+  --accent-hover: #0080aa;
+  --danger: #d32f2f;
+  --success: #388e3c;
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-dark);
+}
+
+.editor-container {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel {
+  background: var(--bg-light);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.left-panel {
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.center-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+.right-panel {
+  width: 280px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.panel h2 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.panel h3 {
+  margin: 16px 0 8px 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+
+/* File Upload */
+.upload-zone {
+  border: 2px dashed var(--accent);
+  border-radius: 6px;
+  padding: 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  margin-bottom: 12px;
+}
+
+.upload-zone:hover {
+  background: var(--bg-lighter);
+  border-color: var(--accent-hover);
+}
+
+.upload-zone.dragover {
+  background: var(--bg-lighter);
+  border-color: var(--accent-hover);
+}
+
+.upload-zone {
+  display: block;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+@media (max-width: 1024px) {
+  body { height: auto; min-height: 100%; }
+  .panel, .right-panel { overflow: visible; }
+  .preview-container { min-height: 260px; }
+  .media-list { max-height: 160px; }
+}
+
+.upload-zone-text {
+  font-size: 12px;
+  color: var(--fg-dim);
+  line-height: 1.5;
+}
+
+/* Media List */
+.media-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.media-item {
+  background: var(--bg-lighter);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.media-item:hover {
+  background: var(--bg-dark);
+  border-color: var(--accent);
+}
+
+.media-item.active {
+  background: var(--bg-dark);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.media-type {
+  font-size: 10px;
+  color: var(--fg-dim);
+  margin-top: 4px;
+}
+
+/* Preview Area */
+.preview-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.preview-placeholder {
+  color: var(--fg-dim);
+  text-align: center;
+  font-size: 14px;
+}
+
+video, canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Controls */
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.control-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.control-label span:first-child {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.control-value {
+  color: var(--accent);
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 11px;
+}
+
+input[type="range"] {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-lighter);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.3);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.3);
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+  background: var(--accent);
+  color: var(--bg-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+button:hover {
+  background: var(--accent-hover);
+}
+
+button.secondary {
+  background: var(--bg-lighter);
+  color: var(--fg);
+  border: 1px solid var(--fg-dim);
+}
+
+button.secondary:hover {
+  background: var(--bg-dark);
+}
+
+button.danger {
+  background: var(--danger);
+  color: white;
+}
+
+button.danger:hover {
+  opacity: 0.9;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .editor-container {
+    flex-direction: column;
+  }
+
+  .left-panel, .right-panel {
+    width: 100%;
+  }
+}
+
+/* Header */
+.header {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.info-text {
+  font-size: 11px;
+  color: var(--fg-dim);
+  margin-top: 4px;
+}
+</style>
+
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>LOG & RAW Editor</h1>
+    <div class="info-text">Upload LOG videos and DNG photos for color grading</div>
+  </div>
+</div>
+
+<div class="editor-container">
+  <!-- Left Panel: File Management -->
+  <div class="panel left-panel">
+    <h2>Media</h2>
+
+    <label class="upload-zone" id="uploadZone" for="fileInput">
+      <span class="upload-zone-text">
+        <strong>Tap to choose files</strong><br>
+        LOG video or DNG photo
+      </span>
+    </label>
+    <input type="file" id="fileInput" class="file-input" multiple>
+    <button id="pickBtn" class="secondary" type="button" style="width:100%;margin-bottom:8px;">Choose files</button>
+    <div class="info-text" id="uploadStatus" role="status">Waiting for a file.</div>
+
+
+    <div class="media-list" id="mediaList"></div>
+  </div>
+
+  <!-- Center Panel: Preview -->
+  <div class="panel center-panel">
+    <div class="preview-container" id="previewContainer">
+      <div class="preview-placeholder">Upload a LOG video or DNG photo to begin</div>
+    </div>
+  </div>
+
+  <!-- Right Panel: Color Controls -->
+  <div class="panel right-panel">
+    <h2>Color Grading</h2>
+
+    <!-- Exposure & Levels -->
+    <h3>Exposure</h3>
+    <div class="control-group">
+      <div class="control-label">
+        <span>Exposure</span>
+        <span class="control-value" id="exposureValue">0</span>
+      </div>
+      <input type="range" id="exposure" min="-100" max="100" value="0">
+    </div>
+
+    <div class="control-label">
+      <span>Contrast</span>
+      <span class="control-value" id="contrastValue">0</span>
+    </div>
+    <div class="control-group">
+      <input type="range" id="contrast" min="-100" max="100" value="0">
+    </div>
+
+    <!-- Color -->
+    <h3>Color</h3>
+    <div class="control-label">
+      <span>Saturation</span>
+      <span class="control-value" id="saturationValue">0</span>
+    </div>
+    <div class="control-group">
+      <input type="range" id="saturation" min="-100" max="100" value="0">
+    </div>
+
+    <div class="control-label">
+      <span>Temperature</span>
+      <span class="control-value" id="temperatureValue">0</span>
+    </div>
+    <div class="control-group">
+      <input type="range" id="temperature" min="-50" max="50" value="0">
+    </div>
+
+    <div class="control-label">
+      <span>Tint</span>
+      <span class="control-value" id="tintValue">0</span>
+    </div>
+    <div class="control-group">
+      <input type="range" id="tint" min="-50" max="50" value="0">
+    </div>
+
+    <!-- Tone Curves -->
+    <h3>Tone</h3>
+    <div class="control-label">
+      <span>Highlights</span>
+      <span class="control-value" id="highlightsValue">0</span>
+    </div>
+    <div class="control-group">
+      <input type="range" id="highlights" min="-100" max="100" value="0">
+    </div>
+
+    <div class="control-label">
+      <span>Shadows</span>
+      <span class="control-value" id="shadowsValue">0</span>
+    </div>
+    <div class="control-group">
+      <input type="range" id="shadows" min="-100" max="100" value="0">
+    </div>
+
+    <!-- Actions -->
+    <div class="button-group" style="margin-top: 24px;">
+      <button id="resetBtn" class="secondary">Reset</button>
+      <button id="downloadBtn">Export</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const state = {
+  currentMedia: null,
+  mediaFiles: [],
+  adjustments: {
+    exposure: 0,
+    contrast: 0,
+    saturation: 0,
+    temperature: 0,
+    tint: 0,
+    highlights: 0,
+    shadows: 0
+  }
+};
+
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+const mediaList = document.getElementById('mediaList');
+const previewContainer = document.getElementById('previewContainer');
+const resetBtn = document.getElementById('resetBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+
+// File upload handlers
+uploadZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadZone.classList.add('dragover');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+  uploadZone.classList.remove('dragover');
+});
+
+uploadZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+
+const uploadStatus = document.getElementById('uploadStatus');
+const setStatus = (t) => { uploadStatus.textContent = t; };
+
+window.addEventListener('error', (e) => setStatus('Error: ' + e.message));
+window.addEventListener('unhandledrejection', (e) => setStatus('Error: ' + (e.reason && e.reason.message || e.reason)));
+
+document.getElementById('pickBtn').addEventListener('click', () => {
+  setStatus('Opening file picker...');
+  try { fileInput.click(); } catch (err) { setStatus('Picker blocked: ' + err.message); }
+});
+uploadZone.addEventListener('click', () => setStatus('Opening file picker...'));
+
+fileInput.addEventListener('change', async (e) => {
+  const n = e.target.files.length;
+  if (!n) { setStatus('No file selected.'); return; }
+  setStatus('Loading ' + n + ' file' + (n > 1 ? 's' : '') + '...');
+  await handleFiles(e.target.files);
+  setStatus('Loaded ' + state.mediaFiles.length + ' file' + (state.mediaFiles.length > 1 ? 's' : '') + '.');
+});
+
+// DNG is TIFF-based; most files embed a full JPEG preview. Use the first one found.
+async function extractDngPreview(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  for (let i = 0; i < bytes.length - 3; i++) {
+    if (bytes[i] === 0xFF && bytes[i + 1] === 0xD8 && bytes[i + 2] === 0xFF) {
+      for (let j = bytes.length - 2; j > i; j--) {
+        if (bytes[j] === 0xFF && bytes[j + 1] === 0xD9) {
+          return URL.createObjectURL(new Blob([bytes.subarray(i, j + 2)], { type: 'image/jpeg' }));
+        }
+      }
+      break;
+    }
+  }
+  return null;
+}
+
+async function handleFiles(files) {
+  for (const file of Array.from(files)) {
+    const lower = file.name.toLowerCase();
+    const isImage = /\.(dng|tif|tiff|jpg|jpeg|png)$/.test(lower) || file.type.startsWith('image/');
+    const entry = { file, name: file.name, type: isImage ? 'image' : 'video', url: null, note: '' };
+
+    if (/\.(dng|tif|tiff)$/.test(lower)) {
+      entry.url = await extractDngPreview(file);
+      entry.note = entry.url ? 'Embedded preview' : 'No preview found';
+    } else {
+      entry.url = URL.createObjectURL(file);
+    }
+    state.mediaFiles.push(entry);
+  }
+  fileInput.value = '';
+  renderMediaList();
+  if (state.currentMedia === null && state.mediaFiles.length) selectMedia(0);
+}
+
+function renderMediaList() {
+  mediaList.innerHTML = state.mediaFiles.map((media, idx) => `
+    <div class="media-item ${state.currentMedia === idx ? 'active' : ''}" onclick="selectMedia(${idx})">
+      <div>${media.name}</div>
+      <div class="media-type">${media.type.toUpperCase()}${media.note ? ' · ' + media.note : ''}</div>
+    </div>
+  `).join('');
+}
+
+function selectMedia(idx) {
+  state.currentMedia = idx;
+  const media = state.mediaFiles[idx];
+
+  previewContainer.innerHTML = '';
+
+  if (!media.url) {
+    previewContainer.innerHTML = '<div class="preview-placeholder">This file has no embedded preview the browser can show.</div>';
+    renderMediaList();
+    return;
+  }
+
+  if (media.type === 'video') {
+    const video = document.createElement('video');
+    video.src = media.url;
+    video.controls = true;
+    previewContainer.appendChild(video);
+  } else {
+    const canvas = document.createElement('canvas');
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      applyAdjustments(canvas);
+    };
+    img.src = media.url;
+    previewContainer.appendChild(canvas);
+  }
+
+  renderMediaList();
+}
+
+function applyAdjustments(canvas) {
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+
+  const exp = state.adjustments.exposure / 100;
+  const cont = 1 + state.adjustments.contrast / 100;
+  const sat = 1 + state.adjustments.saturation / 100;
+  const temp = state.adjustments.temperature / 50;
+  const tint = state.adjustments.tint / 50;
+  const highlights = state.adjustments.highlights / 100;
+  const shadows = state.adjustments.shadows / 100;
+
+  for (let i = 0; i < data.length; i += 4) {
+    let r = data[i] / 255;
+    let g = data[i + 1] / 255;
+    let b = data[i + 2] / 255;
+
+    // Exposure
+    r *= Math.pow(2, exp);
+    g *= Math.pow(2, exp);
+    b *= Math.pow(2, exp);
+
+    // Contrast
+    r = 0.5 + (r - 0.5) * cont;
+    g = 0.5 + (g - 0.5) * cont;
+    b = 0.5 + (b - 0.5) * cont;
+
+    // Temperature (warm/cool)
+    r += temp * 0.2;
+    b -= temp * 0.2;
+
+    // Tint (green/magenta)
+    g += tint * 0.2;
+    r -= tint * 0.1;
+    b -= tint * 0.1;
+
+    // Highlights/Shadows
+    const brightness = (r + g + b) / 3;
+    if (brightness > 0.5) {
+      const factor = 1 + highlights * 0.5;
+      r = brightness + (r - brightness) * factor;
+      g = brightness + (g - brightness) * factor;
+      b = brightness + (b - brightness) * factor;
+    } else {
+      const factor = 1 + shadows * 0.5;
+      r = brightness + (r - brightness) * factor;
+      g = brightness + (g - brightness) * factor;
+      b = brightness + (b - brightness) * factor;
+    }
+
+    // Saturation
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    r = gray + (r - gray) * sat;
+    g = gray + (g - gray) * sat;
+    b = gray + (b - gray) * sat;
+
+    // Clamp values
+    r = Math.max(0, Math.min(1, r));
+    g = Math.max(0, Math.min(1, g));
+    b = Math.max(0, Math.min(1, b));
+
+    data[i] = r * 255;
+    data[i + 1] = g * 255;
+    data[i + 2] = b * 255;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// Control event listeners
+['exposure', 'contrast', 'saturation', 'temperature', 'tint', 'highlights', 'shadows'].forEach(key => {
+  const input = document.getElementById(key);
+  input.addEventListener('input', (e) => {
+    state.adjustments[key] = parseInt(e.target.value);
+    document.getElementById(key + 'Value').textContent = e.target.value;
+
+    if (state.currentMedia !== null) {
+      const media = state.mediaFiles[state.currentMedia];
+      if (media.type === 'image') {
+        const canvas = previewContainer.querySelector('canvas');
+        if (canvas) {
+          const img = new Image();
+          img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            applyAdjustments(canvas);
+          };
+          img.src = media.url;
+        }
+      }
+    }
+  });
+});
+
+resetBtn.addEventListener('click', () => {
+  Object.keys(state.adjustments).forEach(key => {
+    state.adjustments[key] = 0;
+    document.getElementById(key).value = 0;
+    document.getElementById(key + 'Value').textContent = '0';
+  });
+
+  if (state.currentMedia !== null) {
+    const media = state.mediaFiles[state.currentMedia];
+    if (media.type === 'image') {
+      const canvas = previewContainer.querySelector('canvas');
+      if (canvas) {
+        const img = new Image();
+        img.onload = () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+        };
+        img.src = media.url;
+      }
+    }
+  }
+});
+
+downloadBtn.addEventListener('click', () => {
+  if (state.currentMedia === null) return;
+
+  const media = state.mediaFiles[state.currentMedia];
+  if (media.type === 'image') {
+    const canvas = previewContainer.querySelector('canvas');
+    if (canvas) {
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `edited_${media.name}`;
+      link.click();
+    }
+  }
+});
+</script>
+</body>
+</html>
