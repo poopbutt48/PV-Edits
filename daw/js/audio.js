@@ -139,6 +139,7 @@ class ChanNode {
     this.g = g; this.id = ch.id;
     this.in = gain(ctx); this.pan = ctx.createStereoPanner(); this.out = gain(ctx);
     this.in.connect(this.pan); this.pan.connect(this.out);
+    this.bendSrc = ctx.createConstantSource(); this.bendSrc.offset.value = 0; this.bendSrc.start();
     this.mix = -1; this.echo = null;
     this.sync(ch);
   }
@@ -167,6 +168,7 @@ class ChanNode {
   }
   dispose() {
     [this.in, this.pan, this.out].forEach(n => n.disconnect());
+    try { this.bendSrc.stop(); this.bendSrc.disconnect(); } catch (_) { /* stopped */ }
     if (this.echo) Object.values(this.echo).forEach(n => n.disconnect());
   }
 }
@@ -180,6 +182,10 @@ class Graph {
     this.limiter = ctx.createDynamicsCompressor();
     this.limiter.threshold.value = -1.5; this.limiter.knee.value = 0; this.limiter.ratio.value = 20;
     this.limiter.attack.value = 0.002; this.limiter.release.value = 0.09;
+    this.ceil = ctx.createWaveShaper();
+    { const n = 4096, c = new Float32Array(n);
+      for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1, ax = Math.abs(x); c[i] = Math.sign(x) * (ax < 0.85 ? ax : 0.85 + 0.12 * Math.tanh((ax - 0.85) / 0.12)); }
+      this.ceil.curve = c; }
     this.masterAn = ctx.createAnalyser(); this.masterAn.fftSize = 2048; this.masterAn.smoothingTimeConstant = 0.82;
     this.limOn = null;
     this.finalIn.connect(this.masterAn);
@@ -191,9 +197,9 @@ class Graph {
   setLimiter(on) {
     if (this.limOn === on) return;
     this.limOn = on;
-    this.finalIn.disconnect(); this.limiter.disconnect();
+    this.finalIn.disconnect(); this.limiter.disconnect(); this.ceil.disconnect();
     this.finalIn.connect(this.masterAn);
-    if (on) { this.finalIn.connect(this.limiter); this.limiter.connect(this.ctx.destination); } else this.finalIn.connect(this.ctx.destination);
+    if (on) { this.finalIn.connect(this.limiter); this.limiter.connect(this.ceil); this.ceil.connect(this.ctx.destination); } else this.finalIn.connect(this.ctx.destination);
   }
   track(i) {
     let t = this.tracks.get(i);
@@ -394,6 +400,12 @@ A.auditionBuffer = async (id) => {
   A.auditionSrc = s;
   s.onended = () => { g.disconnect(); };
   return s;
+};
+/** Pitch wheel (-1..1) for a channel: bends every sounding voice by up to its bend range. */
+A.setBend = (chId, amount) => {
+  if (!A.graph) return;
+  const c = A.graph.chans.get(chId), ch = S.getCh(chId);
+  if (c && ch) c.bendSrc.offset.setTargetAtTime(amount * (ch.p.bend || 0) * 100, A.ctx.currentTime, 0.008);
 };
 A.stopAudition = () => { if (A.auditionSrc) { try { A.auditionSrc.stop(); } catch (_) { /* ok */ } A.auditionSrc = null; } };
 

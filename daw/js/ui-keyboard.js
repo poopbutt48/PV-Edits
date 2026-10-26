@@ -141,7 +141,9 @@ ui.buildKeyboard = () => {
 };
 
 /* ---------- Web MIDI ---------- */
-const midi = ui.midi = { access: null, inputs: [], off: new Set(JSON.parse(localStorage.getItem('beatforge.midi.off') || '[]')) };
+let midiOff = [];
+try { midiOff = JSON.parse(localStorage.getItem('beatforge.midi.off') || '[]'); } catch (_) { /* storage blocked */ }
+const midi = ui.midi = { access: null, inputs: [], off: new Set(midiOff) };
 function onMsg(e) {
   if (!st.get('midiEnabled')) return;
   const [s, a, b] = e.data, cmd = s & 0xf0;
@@ -150,6 +152,7 @@ function onMsg(e) {
   else if (cmd === 0x80 || (cmd === 0x90 && b === 0)) up('m' + a);
   else if (cmd === 0xb0 && a === 64) K.setSustain(b >= 64);
   else if (cmd === 0xb0 && a === 123) K.releaseAll();
+  else if (cmd === 0xe0) { const c = targetCh(); if (c) DAW.audio.setBend(c.id, ((b << 7 | a) - 8192) / 8192); }
 }
 midi.connect = async () => {
   if (!navigator.requestMIDIAccess || !st.get('midiEnabled')) return false;

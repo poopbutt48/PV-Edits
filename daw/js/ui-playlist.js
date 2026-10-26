@@ -285,7 +285,7 @@ function hit(x, y) {
     const c = clips()[i], cx = tx(c.t), cw = Math.max(6, c.d * pl.zx), cy = ty(c.track);
     if (x >= cx - 3 && x <= cx + cw + 3 && y >= cy && y <= cy + T) {
       const hw = st.get('bigHandles') ? Math.min(cw * 0.35, 24) : Math.min(cw * 0.3, 10);
-      return { c, right: x > cx + cw - hw, left: x < cx + hw && cw > 50 };
+      return { c, right: x > cx + cw - hw, left: cw > 70 && x < cx + Math.min(cw * 0.2, 14) };
     }
   }
   return null;

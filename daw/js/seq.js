@@ -9,6 +9,10 @@ const Auto = DAW.auto = {};
 /** Map a normalized automation value (0..1) to the real parameter value for a target path. */
 Auto.map = (path, n) => {
   const a = path.split(':');
+  if (a[0] === 'ch' && a[2] === 'p') {
+    const ch = S.getCh(Number(a[1])), d = ch && Inst.allParams(ch.type).find(x => x.id === a[3]);
+    return d && d.type === 'knob' ? U.fromNorm(d, n) : n;
+  }
   if (a[0] === 'ch' || a[0] === 'mx') {
     if (a[2] === 'pan') return n * 2 - 1;
     return n; // vol / send are stored as fader position 0..1
@@ -24,7 +28,11 @@ Auto.map = (path, n) => {
 };
 Auto.label = path => {
   const a = path.split(':');
-  if (a[0] === 'ch') { const c = S.getCh(Number(a[1])); return (c ? c.name : '?') + ' ' + a[2]; }
+  if (a[0] === 'ch') {
+    const c = S.getCh(Number(a[1]));
+    if (c && a[2] === 'p') { const d = Inst.allParams(c.type).find(x => x.id === a[3]); return c.name + ' › ' + (d ? d.label : a[3]); }
+    return (c ? c.name : '?') + ' ' + a[2];
+  }
   if (a[0] === 'mx') { const t = S.p.mixer.tracks[Number(a[1])]; return (t ? t.name : '?') + ' ' + (a[2] === 'send' ? 'send → ' + a[3] : a[2]); }
   if (a[0] === 'fx' || a[0] === 'fxmix') {
     const t = S.p.mixer.tracks[Number(a[1])], f = t && t.fx[Number(a[2])];
@@ -90,6 +98,28 @@ function channelNotes(ch, notes, a0, a1) {
   return out;
 }
 
+/* automation clips that drive instrument parameters: applied per note at its start time */
+let autoP = new Map();
+function collectAutoP() {
+  autoP = new Map();
+  S.p.playlist.clips.forEach(c => {
+    if (c.type !== 'auto' || c.mute) return;
+    const au = S.p.automation.find(a => a.id === c.ref); if (!au) return;
+    const a = au.target.split(':');
+    if (a[0] === 'ch' && a[2] === 'p') { const id = Number(a[1]); if (!autoP.has(id)) autoP.set(id, []); autoP.get(id).push({ c, au, key: a[3] }); }
+  });
+}
+function paramOverrides(ch, tick) {
+  const list = autoP.get(ch.id);
+  if (!list || S.p.mode !== 'song') return null;
+  let over = null;
+  for (const it of list) {
+    if (tick < it.c.t || tick >= it.c.t + it.c.d) continue;
+    (over = over || {})[it.key] = Auto.map(it.au.target, Auto.eval(it.au, tick - it.c.t + (it.c.off || 0)));
+  }
+  return over ? Object.assign({}, ch.p, over) : null;
+}
+
 function fire(g, ch, tick, n, dRaw, limitTick, timeOf) {
   const p = ch.p, spt = S.secPerTick();
   const swing = Math.max(S.p.swing || 0, p.swing || 0);
@@ -100,7 +130,7 @@ function fire(g, ch, tick, n, dRaw, limitTick, timeOf) {
   const when = timeOf(tick + shift) + p.nDelay / 1000;
   g.trigger(ch.id, {
     k: n.k, v: n.v == null ? 100 : n.v, pan: n.pan || 0, rel: n.rel == null ? 0.5 : n.rel, fine: n.fine || 0,
-    mx: n.mx == null ? 0.5 : n.mx, my: n.my == null ? 0.5 : n.my, slide: !!n.sl, when, dur: Math.max(0.004, d * spt),
+    mx: n.mx == null ? 0.5 : n.mx, my: n.my == null ? 0.5 : n.my, slide: !!n.sl, when, dur: Math.max(0.004, d * spt), p: paramOverrides(ch, tick),
   });
 }
 
@@ -108,10 +138,10 @@ function playAudioClip(g, clip, whenTime, skipTicks) {
   const ch = S.getCh(clip.ref);
   if (!ch || g.chanMuted(ch) || !ch.sample) return;
   const ctx = g.ctx, p = ch.p, spt = S.secPerTick();
-  const buf = p.reverse ? DAW.samples.reversed(ch.sample) : DAW.samples.getSync(ch.sample);
+  let buf = p.reverse ? DAW.samples.reversed(ch.sample) : DAW.samples.getSync(ch.sample);
   if (!buf) return;
-  const stretch = p.stretchBpm > 0 ? S.p.tempo / p.stretchBpm : 1;
-  const rate = Math.pow(2, p.tune / 12) * stretch;
+  if (p.stretchBpm > 0 && Math.abs(p.stretchBpm - S.p.tempo) > 0.01) buf = DAW.samples.stretched(ch.sample, p.stretchBpm / S.p.tempo, p.reverse) || buf;
+  const rate = Math.pow(2, p.tune / 12);
   const skipSec = (skipTicks || 0) * spt * rate;
   const off = (clip.off || 0) + skipSec;
   if (off >= buf.duration) return;
@@ -136,6 +166,7 @@ function playAudioClip(g, clip, whenTime, skipTicks) {
 /** Schedule everything that starts inside timeline window [w0,w1) (ticks). timeOf maps ticks to context time. */
 function scheduleRange(g, w0, w1, timeOf, o) {
   o = o || {};
+  collectAutoP();
   const p = S.p, tpb = S.ticksPerBar();
   if (o.metro && w1 > w0) {
     for (let b = Math.ceil(w0 / C.PPQ); b * C.PPQ < w1; b++) {
@@ -299,6 +330,7 @@ Seq.halt = keepPos => {
 Seq.pause = () => { Seq.halt(true); ev.emit('transport'); };
 Seq.stop = () => {
   const was = Seq.playing;
+  Seq.waiting = false;
   Seq.halt(false);
   Seq.recording = false;
   const L = S.p.playlist;
@@ -310,8 +342,10 @@ Seq.toggle = () => (Seq.playing ? Seq.pause() : Seq.start());
 Seq.toggleRecord = () => {
   Seq.recording = !Seq.recording;
   Seq.countIn = Seq.recording ? DAW.settings.get('countIn') * 1 : 0;
-  if (Seq.recording && !Seq.playing) Seq.start();
-  else if (!Seq.recording) Seq.flushRecording();
+  Seq.waiting = false;
+  if (Seq.recording && !Seq.playing) {
+    if (DAW.settings.get('waitInput')) { Seq.waiting = true; Seq.countIn = 0; if (DAW.ui && DAW.ui.toast) DAW.ui.toast('Recording starts with your first note'); } else Seq.start();
+  } else if (!Seq.recording) Seq.flushRecording();
   ev.emit('transport');
 };
 Seq.onContextReset = () => { Seq.halt(false); ev.emit('transport'); };
@@ -319,6 +353,11 @@ Seq.onContextReset = () => { Seq.halt(false); ev.emit('transport'); };
 /* ---------- note recording ---------- */
 const quantTicks = () => ({ none: 0, step: C.STEP, '1/2b': 48, beat: C.PPQ }[DAW.settings.get('recQuant')] || 0);
 Seq.recNoteOn = (chId, k, vel) => {
+  if (Seq.recording && Seq.waiting && !Seq.playing) {
+    Seq.waiting = false;
+    Seq.start().then(() => { Seq.recOpen.set(chId + ':' + k, { chId, k, vel, t: 0 }); });
+    return;
+  }
   if (!Seq.recording || !Seq.playing) return;
   const pos = Seq.getPos();
   if (pos < 0) return;

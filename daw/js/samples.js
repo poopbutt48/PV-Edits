@@ -217,11 +217,48 @@ const Samples = DAW.samples = {
     peakCache.set(key, out);
     return out;
   },
+  /** Pitch-preserving time stretch (WSOLA). ratio > 1 makes the sound longer. Cached. */
+  stretched(id, ratio, reverse) {
+    const key = id + '#st' + ratio.toFixed(3) + (reverse ? 'r' : '');
+    if (cache.has(key)) return cache.get(key);
+    const src = reverse ? Samples.reversed(id) : Samples.getSync(id);
+    if (!src) return null;
+    const out = new AudioBuffer({ length: Math.max(1, Math.floor(src.length * ratio)), sampleRate: src.sampleRate, numberOfChannels: src.numberOfChannels });
+    const N = 2048, Hs = 1024, tol = 384, hann = new Float32Array(N);
+    for (let i = 0; i < N; i++) hann[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1));
+    for (let c = 0; c < src.numberOfChannels; c++) {
+      const x = src.getChannelData(c), len = out.length, y = new Float32Array(len + N), nrm = new Float32Array(len + N);
+      let prev = 0;
+      for (let k = 0, o = 0; o < len; k++, o += Hs) {
+        const target = Math.round(o / ratio);
+        let pos = target;
+        if (k > 0) {
+          let best = -1e30; pos = Math.max(0, Math.min(x.length - 1, target));
+          const ref = prev + Hs;
+          for (let d = -tol; d <= tol; d += 2) {
+            const cand = target + d; if (cand < 0 || cand + Hs >= x.length || ref + Hs >= x.length) continue;
+            let sum = 0;
+            for (let i = 0; i < Hs; i += 4) sum += x[cand + i] * x[ref + i];
+            if (sum > best) { best = sum; pos = cand; }
+          }
+        }
+        for (let i = 0; i < N && pos + i < x.length; i++) { y[o + i] += x[pos + i] * hann[i]; nrm[o + i] += hann[i]; }
+        prev = pos;
+      }
+      for (let i = 0; i < len; i++) y[i] = nrm[i] > 1e-3 ? y[i] / nrm[i] : 0;
+      out.copyToChannel(y.subarray(0, len), c);
+    }
+    cache.set(key, out);
+    return out;
+  },
   /** Preload every buffer a project uses so playback never waits on decoding. */
   async preload(project) {
     const ids = new Set();
     project.channels.forEach(c => { if (c.sample) ids.add(c.sample); });
     for (const id of ids) await Samples.get(id);
+    project.channels.forEach(c => {
+      if (c.type === 'audio' && c.sample && c.p.stretchBpm > 0 && Math.abs(c.p.stretchBpm - project.tempo) > 0.01) Samples.stretched(c.sample, c.p.stretchBpm / project.tempo, c.p.reverse);
+    });
   },
 };
 })();

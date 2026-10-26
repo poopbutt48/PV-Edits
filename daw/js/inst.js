@@ -141,9 +141,13 @@ function adsr(param, t0, dur, a, d, s, r, lo, hi) {
 }
 Inst.adsr = adsr;
 
-function lfoSetup(ctx, v, t0, tEnd, shape, rate, targets) {
+function lfoSetup(ctx, v, t0, tEnd, shape, rate, targets, fade) {
   const o = ctx.createOscillator(); o.type = shape; o.frequency.value = rate;
-  targets.forEach(([param, amount]) => { const g = ctx.createGain(); g.gain.value = amount; o.connect(g); g.connect(param); v.nodes.push(g); });
+  targets.forEach(([param, amount]) => {
+    const g = ctx.createGain();
+    if (fade > 0.005) { g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(amount, t0 + fade); } else g.gain.value = amount;
+    o.connect(g); g.connect(param); v.nodes.push(g);
+  });
   o.start(t0);
   v.stops.push(o);
   v.nodes.push(o);
@@ -155,14 +159,21 @@ class Voice {
     this.g = g; this.ch = ch; this.ev = ev;
     this.nodes = []; this.stops = [];
     this.end = ev.when + 0.1;
-    this.gainNode = null; this.relFns = [];
+    this.gainNode = null; this.relFns = []; this.bendParams = [];
+  }
+  /* route the channel's pitch-bend wheel into an oscillator/source detune param */
+  bend(param) {
+    const c = this.g.chan(this.ch.id);
+    if (!c.bendSrc) return;
+    try { c.bendSrc.connect(param); this.bendParams.push(param); } catch (_) { /* ignore */ }
   }
   finish(end) {
     this.end = end;
     this.stops.forEach(s => { try { s.stop(end); } catch (_) { /* already stopped */ } });
     const last = this.stops[0];
     const nodes = this.nodes;
-    if (last) last.onended = () => nodes.forEach(n => { try { n.disconnect(); } catch (_) { /* gone */ } });
+    const bp = this.bendParams, c = this.g.chans.get(this.ch.id);
+    if (last) last.onended = () => { nodes.forEach(n => { try { n.disconnect(); } catch (_) { /* gone */ } }); if (c && c.bendSrc) bp.forEach(p2 => { try { c.bendSrc.disconnect(p2); } catch (_) { /* gone */ } }); };
   }
   release(t) {
     let end = 0;
@@ -189,7 +200,7 @@ const relScale = ev => Math.pow(4, ((ev.rel == null ? 0.5 : ev.rel) - 0.5) * 2);
 
 /** Common tail of every voice: stereo pan / polarity / swap, then into the channel strip. */
 function outStage(g, ch, ev, v, src) {
-  const ctx = g.ctx, p = ch.p;
+  const ctx = g.ctx, p = ev.p || ch.p;
   let node = src;
   if (p.invert || p.swapLR) {
     const amp = ctx.createGain(); amp.gain.value = p.invert ? -1 : 1;
@@ -241,7 +252,7 @@ register('sampler', 'Sampler', [
     K('lfoAmt', 'Amount', 0, 1, 0.3, { unit: '%' }),
   ] },
 ], (g, ch, ev) => {
-  const ctx = g.ctx, p = ch.p;
+  const ctx = g.ctx, p = ev.p || ch.p;
   const sid = ch.sample;
   let buf = sid ? (p.reverse ? DAW.samples.reversed(sid) : DAW.samples.getSync(sid)) : null;
   if (!buf) return null;
@@ -252,6 +263,7 @@ register('sampler', 'Sampler', [
   const src = ctx.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate;
   if (p.loop) { src.loop = true; src.loopStart = p.loopStart * buf.duration; src.loopEnd = Math.max(src.loopStart + 0.005, p.loopEnd * buf.duration); }
   const vca = ctx.createGain(); v.gainNode = vca;
+  v.bend(src.detune);
   const amp = velAmp(ev, p) * U.dbToGain(p.gain);
   v.nodes.push(src, vca); v.stops.push(src);
   let node = src;
@@ -350,7 +362,7 @@ const SYNTH_GROUPS = [
 
 const lastFreq = new WeakMap();
 function synthPlay(g, ch, ev) {
-  const ctx = g.ctx, p = ch.p, t0 = ev.when;
+  const ctx = g.ctx, p = ev.p || ch.p, t0 = ev.when;
   const v = new Voice(g, ch, ev);
   const semi0 = ev.k + ch.pitch + g.masterPitch + (ev.fine || 0) / 100;
   const f0 = U.mtof(semi0);
@@ -375,7 +387,7 @@ function synthPlay(g, ch, ev) {
       o.detune.value = p['f' + n] + pos * p['ud' + n];
       const fr = f0 * ratio;
       if (glide > 0 && prev && (p.mono || ev.slide)) { o.frequency.setValueAtTime(prev * ratio, t0); o.frequency.exponentialRampToValueAtTime(fr, t0 + Math.max(glide, 0.005)); } else o.frequency.setValueAtTime(fr, t0);
-      v.nodes.push(o); v.stops.push(o);
+      v.nodes.push(o); v.stops.push(o); v.bend(o.detune);
       oscs.push({ o, n, ratio });
       if (isMod) {
         const dev = ctx.createGain(); dev.gain.value = p.fm * f0 * ratio; o.connect(dev); v.nodes.push(dev);
@@ -393,7 +405,7 @@ function synthPlay(g, ch, ev) {
   if (fmTarget) oscs.filter(x => x.n === 1).forEach(x => fmTarget.connect(x.o.frequency));
   if (p.sub > 0) {
     const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(f0 * Math.pow(2, p.subOct), t0);
-    const gn = ctx.createGain(); gn.gain.value = p.sub; o.connect(gn); gn.connect(mix); v.nodes.push(o, gn); v.stops.push(o); oscs.push({ o, n: 0, ratio: Math.pow(2, p.subOct) });
+    const gn = ctx.createGain(); gn.gain.value = p.sub; o.connect(gn); gn.connect(mix); v.nodes.push(o, gn); v.stops.push(o); v.bend(o.detune); oscs.push({ o, n: 0, ratio: Math.pow(2, p.subOct) });
   }
   if (p.noise > 0) {
     const s = ctx.createBufferSource(); s.buffer = noiseBuf(ctx); s.loop = true;
@@ -426,7 +438,7 @@ function synthPlay(g, ch, ev) {
     else if (p[tg] === 'cut') t.push([fl.detune, a * 2400]);
     else if (p[tg] === 'res') t.push([fl.Q, a * 10]);
     else if (p[tg] === 'vol') t.push([mix.gain, a * 0.5]);
-    if (t.length) lfoSetup(ctx, v, t0, 0, p[sh], p[rt], t);
+    if (t.length) lfoSetup(ctx, v, t0, 0, p[sh], p[rt], t, sh === 'lfoShape' ? (p.lfoDelay || 0) / 1000 : 0);
   });
   const pan = outStage(g, ch, ev, v, vca);
   if (p.lfoTarget === 'pan') lfoSetup(ctx, v, t0, 0, p.lfoShape, p.lfoRate, [[pan.pan, p.lfoAmt]]);
@@ -476,7 +488,7 @@ register('fm', 'FM Synth', [
   ] },
   opGroup(1), opGroup(2), opGroup(3),
 ], (g, ch, ev) => {
-  const ctx = g.ctx, p = ch.p, t0 = ev.when, v = new Voice(g, ch, ev);
+  const ctx = g.ctx, p = ev.p || ch.p, t0 = ev.when, v = new Voice(g, ch, ev);
   const f0 = U.mtof(ev.k + ch.pitch + g.masterPitch + (ev.fine || 0) / 100), amp = velAmp(ev, p);
   const out = ctx.createGain(), lp = ctx.createBiquadFilter(), vca = ctx.createGain();
   lp.type = 'lowpass'; lp.frequency.value = p.cut; v.nodes.push(out, lp, vca); v.gainNode = vca;
@@ -486,7 +498,7 @@ register('fm', 'FM Synth', [
     const fr = f0 * p['r' + n]; o.frequency.setValueAtTime(fr, t0); o.detune.value = p['fine' + n];
     const eg = ctx.createGain(); o.connect(eg);
     const e = adsr(eg.gain, t0, ev.dur, p['a' + n] / 1000, p['d' + n] / 1000, p['s' + n], p['rl' + n] / 1000 * relScale(ev), 0, p['lv' + n]);
-    v.nodes.push(o, eg); v.stops.push(o); v.relFns.push(e.rel);
+    v.nodes.push(o, eg); v.stops.push(o); v.relFns.push(e.rel); v.bend(o.detune);
     return { o, eg, fr, e };
   });
   const dev = (src, dst) => { const d = ctx.createGain(); d.gain.value = p.depth * src.fr; src.eg.connect(d); d.connect(dst.o.frequency); v.nodes.push(d); };
@@ -545,10 +557,11 @@ register('pluck', 'Pluck', [
     K('pan', 'Pan', -1, 1, 0, { unit: 'pan' }),
   ] },
 ], (g, ch, ev) => {
-  const ctx = g.ctx, p = ch.p, t0 = ev.when, v = new Voice(g, ch, ev);
+  const ctx = g.ctx, p = ev.p || ch.p, t0 = ev.when, v = new Voice(g, ch, ev);
   const k = Math.round(U.clamp(ev.k + ch.pitch + g.masterPitch, 12, 100));
   const src = ctx.createBufferSource(); src.buffer = ksBuffer(ctx, k, p.decay, p.bright, p.hard);
   src.detune.value = (ev.fine || 0);
+  v.bend(src.detune);
   const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = p.cut; fl.Q.value = p.res;
   const vca = ctx.createGain(); v.gainNode = vca; v.nodes.push(src, fl, vca); v.stops.push(src);
   src.connect(fl); fl.connect(vca);
@@ -573,7 +586,7 @@ register('drum', 'Drum Synth', [
     K('pan', 'Pan', -1, 1, 0, { unit: 'pan' }),
   ] },
 ], (g, ch, ev) => {
-  const ctx = g.ctx, p = ch.p, t0 = ev.when, v = new Voice(g, ch, ev);
+  const ctx = g.ctx, p = ev.p || ch.p, t0 = ev.when, v = new Voice(g, ch, ev);
   const amp = velAmp(ev, p) * 0.9, tune = Math.pow(2, (p.tune + (ev.k - 60) * 0.5 * (p.kind === 'kick' || p.kind === 'tom' ? 2 : 0) + ch.pitch) / 12);
   const vca = ctx.createGain(); v.gainNode = vca; v.nodes.push(vca);
   const D = p.decay;

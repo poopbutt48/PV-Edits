@@ -33,6 +33,9 @@ ui.noteProps = (notes, onChange, title) => {
   return ui.sheet({ title: title || (notes.length > 1 ? notes.length + ' notes' : 'Note ' + U.noteName(first.k)), content: body, cls: 'small' });
 };
 
+ui.laneDef = id => ({ v: { min: 1, max: 127, def: 100, bip: false, int: true }, pan: { min: -1, max: 1, def: 0, bip: true }, rel: { min: 0, max: 1, def: 0.5, bip: false }, fine: { min: -100, max: 100, def: 0, bip: true, int: true }, mx: { min: 0, max: 1, def: 0.5, bip: false }, my: { min: 0, max: 1, def: 0.5, bip: false } }[id]);
+ui.LANES = [['v', 'Velocity'], ['pan', 'Pan'], ['rel', 'Release'], ['fine', 'Pitch'], ['mx', 'Mod X'], ['my', 'Mod Y']];
+
 /* ---------- pick mixer track ---------- */
 ui.pickTrack = (cur, title) => new Promise(res => {
   const body = h('div.pgrid', { style: { gridTemplateColumns: 'repeat(auto-fill,minmax(4.2rem,1fr))' } });
@@ -131,6 +134,7 @@ const view = { };
 ui.registerView('rack', view);
 
 let root, scrollEl, content, rowsEl, playhead, patBtn;
+const RL = { open: false, param: 'v', wrap: null, cv: null };
 let paintMode = false;
 let holdTimer = 0;
 
@@ -255,7 +259,46 @@ function render() {
     pat.bars > 1 ? h('button.btn', { onclick: () => { pat.bars = Math.max(1, pat.bars - 1); S.commit('Remove bar'); S.emit('pattern'); } }, U.icon('minus', 18), 'Remove bar') : null));
 }
 
-view.show = () => render();
+function drawRackLane() {
+  if (!RL.open || !RL.cv) return;
+  const cv = RL.cv, w = scrollEl.clientWidth, hh = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (!w || !hh) return;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(hh * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(hh * dpr); }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, hh);
+  const ch = S.curCh(), pat = S.curPat(), first = rowsEl.querySelector('.step');
+  if (!ch || !first) return;
+  const sw = first.offsetWidth + 3, x0 = first.offsetLeft - scrollEl.scrollLeft, d = ui.laneDef(RL.param), n = stepCount();
+  g.fillStyle = '#10131a'; g.fillRect(0, 0, 150, hh);
+  g.fillStyle = '#9aa4ba'; g.font = '600 11px sans-serif'; g.fillText(ch.name, 10, 18); g.fillStyle = '#646e84'; g.font = '10px sans-serif'; g.fillText(ui.LANES.find(l => l[0] === RL.param)[1], 10, 34);
+  for (let i = 0; i < n; i++) {
+    const x = x0 + i * sw; if (x + sw < 150 || x > w) continue;
+    g.fillStyle = Math.floor(i / 4) % 2 ? '#141923' : '#10141c'; g.fillRect(x, 0, sw, hh);
+    const hit = S.stepOn(pat, ch.id, i); if (!hit.length) continue;
+    const val = hit[0][RL.param] == null ? d.def : hit[0][RL.param], norm = (val - d.min) / (d.max - d.min);
+    g.fillStyle = ch.color;
+    if (d.bip) { const mid = hh / 2, y = mid - (norm - 0.5) * (hh - 12); g.fillRect(x + 4, Math.min(mid, y), sw - 11, Math.max(2, Math.abs(y - mid))); } else g.fillRect(x + 4, hh - 4 - norm * (hh - 12), sw - 11, norm * (hh - 12));
+  }
+  g.fillStyle = '#10131a'; g.fillRect(0, 0, 150, hh);
+  g.fillStyle = '#9aa4ba'; g.font = '600 11px sans-serif'; g.fillText(ch.name, 10, 18); g.fillStyle = '#646e84'; g.font = '10px sans-serif'; g.fillText(ui.LANES.find(l => l[0] === RL.param)[1], 10, 34);
+}
+function wireRackLane() {
+  let down = false, last = -1;
+  const setAt = e => {
+    const r = RL.cv.getBoundingClientRect(), first = rowsEl.querySelector('.step'), ch = S.curCh(); if (!first || !ch) return;
+    const sw = first.offsetWidth + 3, x0 = first.offsetLeft - scrollEl.scrollLeft, i = Math.floor((e.clientX - r.left - x0) / sw), d = ui.laneDef(RL.param);
+    if (i < 0 || i >= stepCount()) return;
+    const norm = d.bip ? 0.5 - ((e.clientY - r.top) - r.height / 2) / (r.height - 12) : 1 - ((e.clientY - r.top) - 4) / (r.height - 12);
+    let v = U.clamp(d.min + norm * (d.max - d.min), d.min, d.max); if (d.int) v = Math.round(v);
+    S.stepOn(S.curPat(), ch.id, i).forEach(nt => { nt[RL.param] = v; });
+    last = i; drawRackLane();
+  };
+  RL.cv.addEventListener('pointerdown', e => { e.preventDefault(); RL.cv.setPointerCapture(e.pointerId); down = true; setAt(e); });
+  RL.cv.addEventListener('pointermove', e => { if (down) setAt(e); });
+  const up = () => { if (down) { down = false; S.commit('Edit step graph'); S.emit('notes', S.ui.pat, S.ui.ch); } void last; };
+  RL.cv.addEventListener('pointerup', up); RL.cv.addEventListener('pointercancel', up);
+  scrollEl.addEventListener('scroll', drawRackLane, { passive: true });
+}
+view.show = () => { render(); drawRackLane(); };
 view.hide = () => {};
 view.tick = pos => {
   if (!root) return;
@@ -268,35 +311,46 @@ view.tick = pos => {
   const w = first.offsetWidth + 3, x = first.offsetLeft + sp * w;
   playhead.style.opacity = 1;
   playhead.style.transform = `translateX(${x}px)`;
-  if (DAW.settings.get('followPlayhead') !== 'off') {
-    const vis = scrollEl.scrollLeft + scrollEl.clientWidth, head = 150;
-    if (x > vis - 20 || x < scrollEl.scrollLeft + head) scrollEl.scrollLeft = Math.max(0, x - head - 10);
+  const mode = DAW.settings.get('followPlayhead');
+  if (mode !== 'off') {
+    const head = 150, vis = scrollEl.scrollLeft + scrollEl.clientWidth;
+    if (mode === 'smooth') scrollEl.scrollLeft = Math.max(0, x - head - (scrollEl.clientWidth - head) * 0.3);
+    else if (x > vis - 20 || x < scrollEl.scrollLeft + head) scrollEl.scrollLeft = Math.max(0, x - head - 10);
   }
+  playhead.style.height = rowsEl.offsetHeight + 'px';
 };
 
 view.build = () => {
   root = U.$('#v-rack');
   patBtn = h('button.chip', { 'aria-label': 'Pattern', onclick: ui.patternPicker });
   const paintBtn = h('button.chip', { 'aria-label': 'Paint mode', onclick: () => { paintMode = !paintMode; paintBtn.classList.toggle('on', paintMode); rowsEl.classList.toggle('paintmode', paintMode); } }, U.icon('paint', 16), 'Paint');
+  const graphBtn = h('button.chip', { onclick: () => { RL.open = !RL.open; graphBtn.classList.toggle('on', RL.open); RL.wrap.hidden = !RL.open; RL.chips.hidden = !RL.open; setTimeout(drawRackLane, 30); } }, U.icon('graph', 16), 'Graph');
   const sub = h('div.subbar', patBtn,
     h('button.chip', { onclick: () => { S.addPattern(); S.commit('New pattern'); } }, U.icon('plus', 14), 'Pattern'),
     paintBtn,
     h('button.chip', { onclick: ui.addChannelSheet }, U.icon('plus', 14), 'Channel'),
+    graphBtn,
+    h('button.chip', { onclick: () => { const body = h('div.dialog', ui.knob({ def: { id: 'swing', label: 'Swing', min: 0, max: 1, def: 0, unit: '%' }, value: S.p.swing, onInput: v => { S.p.swing = v; }, onChange: () => S.commit('Swing') }), h('p.dim', 'Delays every second 1/16 note. Each channel also has its own swing under Settings → Time.')); ui.sheet({ title: 'Swing', content: body, cls: 'small' }); } }, 'Swing'),
     h('button.chip', { 'aria-label': 'Pattern options', onclick: () => ui.patternMenu(S.curPat(), render) }, U.icon('dots', 16)));
   rowsEl = h('div');
   playhead = h('div.playhead-line');
   content = h('div.rack-content', playhead, rowsEl);
   scrollEl = h('div.rack', content);
-  root.append(sub, scrollEl);
+  RL.cv = h('canvas', { style: { width: '100%', height: '100%', display: 'block', touchAction: 'none' } });
+  RL.wrap = h('div', { hidden: true, style: { height: '7rem', flex: 'none', borderTop: '1px solid var(--line)', background: 'var(--bg0)' } }, RL.cv);
+  RL.chips = h('div.lane-bar', { hidden: true }, ui.LANES.map(([id, label]) => h('button.chip' + (id === RL.param ? '.on' : ''), { dataset: { lane: id }, onclick: () => { RL.param = id; U.$$('.chip', RL.chips).forEach(b => b.classList.toggle('on', b.dataset.lane === id)); drawRackLane(); } }, label)));
+  root.append(sub, scrollEl, RL.wrap, RL.chips);
+  wireRackLane();
   wireSteps();
   const rerender = () => { if (ui.cur === 'rack') render(); };
   ['project', 'restore', 'channels', 'pattern', 'tempo'].forEach(e => S.on(e, rerender));
-  S.on('select', () => { U.$$('.ch-row', rowsEl).forEach(r => r.classList.toggle('sel', Number(r.dataset.ch) === S.ui.ch)); });
+  S.on('select', () => { U.$$('.ch-row', rowsEl).forEach(r => r.classList.toggle('sel', Number(r.dataset.ch) === S.ui.ch)); drawRackLane(); });
   S.on('notes', (pid, chId) => {
     if (ui.cur !== 'rack' || pid !== S.ui.pat) return;
     const pat = S.curPat();
     const rows = chId == null ? U.$$('.steps[data-ch]', rowsEl) : U.$$('.steps[data-ch="' + chId + '"]', rowsEl);
     rows.forEach(st => paintRow(st, S.getCh(Number(st.dataset.ch)), pat));
+    drawRackLane();
   });
   render();
 };

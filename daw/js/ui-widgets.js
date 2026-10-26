@@ -19,6 +19,20 @@ ui.toast = (msg, ms) => {
 
 /* ---------- bottom sheet / modal ---------- */
 let sheetZ = 0;
+/* Android back gesture closes the top sheet: one history entry covers the whole stack of open sheets. */
+const sheetStack = [];
+let backEntry = false, backSkip = 0, backTimer = 0;
+window.addEventListener('popstate', () => {
+  if (backSkip > 0) { backSkip--; return; }
+  backEntry = false;
+  const top = sheetStack[sheetStack.length - 1];
+  if (top) { top.close(); if (sheetStack.length) { history.pushState({ bf: 1 }, ''); backEntry = true; } }
+});
+const backOpen = api => { clearTimeout(backTimer); sheetStack.push(api); if (!backEntry) { try { history.pushState({ bf: 1 }, ''); backEntry = true; } catch (_) { /* ignore */ } } };
+const backClose = api => {
+  const i = sheetStack.indexOf(api); if (i >= 0) sheetStack.splice(i, 1);
+  if (!sheetStack.length) backTimer = setTimeout(() => { if (!sheetStack.length && backEntry) { backEntry = false; backSkip++; history.back(); } }, 260);
+};
 ui.sheet = o => {
   const back = h('div.sheet-back', { style: { zIndex: 100 + (++sheetZ) } });
   const body = h('div.sheet-body');
@@ -37,11 +51,13 @@ ui.sheet = o => {
       back.classList.add('out');
       setTimeout(() => back.remove(), 160);
       document.removeEventListener('keydown', onKey);
+      backClose(api);
       if (o.onClose) o.onClose();
     },
   };
   const onKey = e => { if (e.key === 'Escape') api.close(); };
   document.addEventListener('keydown', onKey);
+  backOpen(api);
   back.addEventListener('pointerdown', e => { if (e.target === back) api.close(); });
   // swipe the handle down to dismiss
   U.drag(head, {

@@ -7,10 +7,9 @@ const U = DAW.util, h = U.h, S = DAW.state, ui = DAW.ui, C = DAW.C, seq = DAW.se
 /** Called from a knob's long-press menu. */
 ui.makeAutomation = (path, def, cur) => {
   const a = path.split(':');
-  if (a[2] === 'p') { ui.toast('Instrument parameters can’t be automated yet — try volume, pan, mixer or effect knobs.', 4200); return; }
   let n = 0.5;
   if (cur != null) {
-    if (a[0] === 'fx') n = U.toNorm(def, cur);
+    if (a[0] === 'fx' || a[2] === 'p') n = U.toNorm(def, cur);
     else if (a[2] === 'pan') n = (cur + 1) / 2;
     else n = U.clamp(cur, 0, 1);
   }

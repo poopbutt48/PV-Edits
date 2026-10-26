@@ -33,6 +33,22 @@ function waveView(ch) {
   return cv;
 }
 
+ui.sliceToChannels = ch => {
+  const body = h('div.dialog'), o = { n: 8, steps: true };
+  body.append(ui.select('Number of slices', [2, 4, 8, 16].map(v => ({ v, l: String(v) })), o.n, v => { o.n = Number(v); }),
+    ui.toggle('Place one step per slice in the current pattern', true, v => { o.steps = v; }),
+    h('p.dim', 'Creates one sampler channel per slice, each playing its own part of the sample.'),
+    h('button.btn.primary', { onclick: () => {
+      const pat = S.curPat(), spb = S.stepsPerBar() * pat.bars;
+      for (let i = 0; i < o.n; i++) {
+        const c2 = S.addChannel('sampler', { name: ch.name + ' ' + (i + 1), sample: ch.sample, mix: ch.mix, p: Object.assign({}, ch.p, { start: i / o.n, end: (i + 1) / o.n }) });
+        if (o.steps) S.toggleStep(pat, c2.id, Math.floor(i * spb / o.n), 100);
+      }
+      S.commit('Slice sample'); s2.close(); ui.show('rack');
+    } }, U.icon('slice', 18), 'Create slices'));
+  const s2 = ui.sheet({ title: 'Slice ' + ch.name, content: body, cls: 'small' });
+};
+
 ui.openChannel = (id, tabName) => {
   const ch = S.getCh(id);
   if (!ch) return;

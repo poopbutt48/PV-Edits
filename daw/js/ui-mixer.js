@@ -154,8 +154,7 @@ function renderDetail() {
       ui.knob({ def: { id: 'sep', label: 'Stereo width', min: -1, max: 1, def: 0, fmt: v => (v < 0 ? 'narrow ' : 'wide ') + Math.round(Math.abs(v) * 100) + '%' }, value: t.sep, onInput: v => { t.sep = v; touch(); }, onChange: () => S.commit('Stereo width') }),
       ui.knob({ def: { id: 'delay', label: 'Track delay', min: 0, max: 500, def: 0, unit: 'ms' }, value: t.delay, onInput: v => { t.delay = v; touch(); }, onChange: () => S.commit('Track delay') }),
       ui.toggle('Invert phase', t.inv, v => { t.inv = v; S.commit('Phase'); touch(); }),
-      ui.toggle('Swap left / right', t.swap, v => { t.swap = v; S.commit('Swap'); touch(); }),
-      ui.toggle('Armed for recording', t.arm, v => { t.arm = v; S.commit('Arm'); })));
+      ui.toggle('Swap left / right', t.swap, v => { t.swap = v; S.commit('Swap'); touch(); })));
   }
 }
 function refreshDots(i) {
