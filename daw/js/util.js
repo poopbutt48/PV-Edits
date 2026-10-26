@@ -124,7 +124,7 @@ U.h = function h(tag, props, ...kids) {
       const v = props[k];
       if (v == null || v === false) continue;
       if (k === 'class') el.setAttribute('class', ((el.getAttribute('class') || '') + ' ' + v).trim());
-      else if (k === 'style') { if (typeof v === 'string') el.style.cssText = v; else Object.assign(el.style, v); }
+      else if (k === 'style') { if (typeof v === 'string') el.style.cssText = v; else for (const sk in v) { if (sk.startsWith('--')) el.style.setProperty(sk, v[sk]); else el.style[sk] = v[sk]; } }
       else if (k === 'dataset') Object.assign(el.dataset, v);
       else if (k === 'value') value = v;
       else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);

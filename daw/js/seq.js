@@ -82,10 +82,10 @@ function channelNotes(ch, notes, a0, a1) {
   const p = ch.p, out = [];
   if (p.arpOn) {
     const groups = new Map();
-    for (const n of notes) { if (n.t >= a0 && n.t < a1) { const key = n.t; (groups.get(key) || groups.set(key, []).get(key)).push(n); } }
+    for (const n of notes) { if (n.t >= a0 && n.t < a1 && !n.m) { const key = n.t; (groups.get(key) || groups.set(key, []).get(key)).push(n); } }
     for (const [t, grp] of groups) arpExpand(p, grp).forEach(x => out.push({ tick: t + x.off, n: Object.assign({}, grp[0], { k: x.k, d: x.d, v: x.v }) }));
   } else {
-    for (const n of notes) if (n.t >= a0 && n.t < a1) out.push({ tick: n.t, n });
+    for (const n of notes) if (n.t >= a0 && n.t < a1 && !n.m) out.push({ tick: n.t, n });
   }
   return out;
 }

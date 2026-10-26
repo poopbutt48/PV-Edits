@@ -7,6 +7,9 @@ const U = DAW.util, C = DAW.C;
 const S = DAW.state = new U.Emitter();
 C.STEP_KEY = 60;
 
+const rawEmit = S.emit.bind(S);
+S.building = false;
+S.emit = (...a) => { if (!S.building) rawEmit(...a); };
 S.p = null;
 S.ui = { view: 'rack', pat: 1, ch: null, track: 1, tool: 'draw' };
 S.dirty = false;
@@ -239,8 +242,11 @@ S.setProject = (p, keepId) => {
 S.newProject = (template) => {
   const p = blankProject();
   S.p = p;
-  if (template && DAW.templates && DAW.templates[template]) DAW.templates[template](S);
-  else DAW.templates.empty(S);
+  S.building = true;
+  try {
+    if (template && DAW.templates && DAW.templates[template]) DAW.templates[template](S);
+    else DAW.templates.empty(S);
+  } finally { S.building = false; }
   const proj = S.p;
   S.setProject(proj);
   return proj;
