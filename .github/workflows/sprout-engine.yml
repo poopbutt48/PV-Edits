@@ -1,0 +1,83 @@
+# Builds and tests Sprout Engine.
+#  - test:    runs the editor in a headless browser and checks it works
+#  - windows: builds the Windows installer (.exe)
+#  - android: builds an Android app (.apk) you can install on a phone or tablet
+# Download the results from the "Artifacts" section of each workflow run.
+name: Sprout Engine
+
+on:
+  push:
+    paths: ['engine/**', '.github/workflows/sprout-engine.yml']
+  pull_request:
+    paths: ['engine/**', '.github/workflows/sprout-engine.yml']
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: engine
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: engine/package-lock.json
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-screenshots
+          path: engine/tests/output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprout-engine-web
+          path: engine/dist
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: engine/package-lock.json
+      - run: npm ci
+      - run: npm run dist:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprout-engine-windows
+          path: engine/release/*.exe
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: engine/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm run android:add
+      - run: ./gradlew assembleDebug --no-daemon
+        working-directory: engine/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprout-engine-android
+          path: engine/android/app/build/outputs/apk/debug/*.apk

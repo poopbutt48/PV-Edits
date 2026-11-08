@@ -1,0 +1,8 @@
+{
+  "appId": "com.sproutengine.editor",
+  "appName": "Sprout Engine",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#1b1f2b"
+  }
+}
